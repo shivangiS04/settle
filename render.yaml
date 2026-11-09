@@ -41,3 +41,5 @@ services:
         value: "3"
       - key: AUTO_APPROVE_HOURS
         value: "48"
+      - key: DEMO_RESET_ENABLED
+        value: "1" # shows the "Reset demo" button for judges (app DB only)

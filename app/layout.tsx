@@ -3,6 +3,7 @@ import localFont from "next/font/local";
 import Link from "next/link";
 import "./globals.css";
 import { RoleSwitcher } from "@/components/RoleSwitcher";
+import { ResetDemoButton } from "@/components/ResetDemoButton";
 import { currentUser } from "@/lib/session";
 import { isMockMode } from "@/lib/mode";
 
@@ -36,11 +37,12 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             </nav>
             <div className="ml-auto flex items-center gap-3">
               {mock && (
-                <span className="rounded bg-amber-100 px-2 py-1 text-[11px] font-semibold text-amber-800" title="PayPal/Anthropic credentials missing — calls are simulated and labelled MOCK in the audit trail">
+                <span className="rounded bg-amber-100 px-2 py-1 text-[11px] font-semibold text-amber-800" title="PayPal or LLM credentials missing — calls are simulated and labelled MOCK in the audit trail">
                   MOCK MODE
                 </span>
               )}
               <span className="hidden text-xs text-slate-500 sm:inline">{user ? `${user.name} · ${user.paypalEmail}` : "no seed data"}</span>
+              {process.env.DEMO_RESET_ENABLED === "1" && <ResetDemoButton />}
               <RoleSwitcher role={role} />
             </div>
           </div>

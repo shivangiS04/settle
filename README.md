@@ -210,6 +210,8 @@ The repo includes a [`render.yaml`](render.yaml) Blueprint: a Docker web service
 4. Every start runs `prisma db push`, then `npm run seed`. The seed **only runs when the database is empty**, so restarts and redeploys keep your data. To wipe and reseed on purpose, use `npm run seed -- --reset` (or `SEED_RESET=1`), or the **Reset demo** button.
 5. Point your sandbox webhook at `https://<service>.onrender.com/api/webhooks/paypal`.
 
+**Reset demo:** with `DEMO_RESET_ENABLED=1` (set in `render.yaml`), the header shows a **Reset demo** button. It calls `POST /api/demo/reset`, which wipes and reseeds the *app database only* (it never calls PayPal). It's rate-limited to once per 60 seconds and recorded in the audit trail.
+
 How the build works: `scripts/use-postgres.mjs` switches the Prisma provider from `sqlite` to `postgresql` at build time. The schema avoids enums and JSON columns so it runs unchanged on both. Background jobs (auto-approve, auth expiry, payout sync) run every 60s inside the server via `instrumentation.ts`. You can also call `POST /api/cron/tick` with `Authorization: Bearer $CRON_SECRET`.
 
 The Blueprint uses Render's **free** plans. A free web service sleeps after 15 minutes idle, so the first request takes about a minute, and free Postgres expires after 30 days. If Verifier screenshots run out of memory, switch the web service to `standard`.
