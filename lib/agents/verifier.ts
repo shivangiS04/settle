@@ -248,6 +248,10 @@ function mockVerdict(crits: Crit[], page: PageEvidence | null, repo: RepoEvidenc
         evidence = mv
           ? `Mobile width ${mv.scrollWidth}px; meta viewport ${page.metaViewport ? "present" : "missing"}.`
           : `Text-only: ${page.responsiveHints?.mediaQueries ?? 0} @media rule(s); meta viewport ${page.metaViewport ? "present" : "missing"}.`;
+      } else if (/hero|call.to.action|\bcta\b|button/.test(t) && page) {
+        const h1 = page.headings.find((h) => h.startsWith("H1"));
+        passed = !!h1 && page.buttons.length > 0;
+        evidence = `${h1 ? `Headline "${h1.slice(4, 60)}"` : "No H1 headline"}; ${page.buttons.length} button(s)${page.buttons[0] ? ` e.g. "${page.buttons[0]}"` : ""}.`;
       } else if (c.checkType === "WORD_COUNT") {
         evidence = `Words: ${page?.wordCount ?? textWords}.`;
       } else if (c.checkType === "CODE" && repo) {
