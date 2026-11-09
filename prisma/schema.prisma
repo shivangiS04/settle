@@ -1,0 +1,229 @@
+// Settle — AI escrow for freelance work.
+// NOTE: provider is "sqlite" for zero-setup local dev. The Docker/Render build runs
+// scripts/use-postgres.mjs which swaps it to "postgresql". To stay portable we avoid
+// Prisma enums and Json columns: status fields are strings, JSON is stored as text.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id          String @id @default(cuid())
+  name        String
+  email       String @unique
+  role        String // CLIENT | FREELANCER
+  paypalEmail String // sandbox personal account email (payout receiver / payer)
+
+  clientContracts     Contract[] @relation("client")
+  freelancerContracts Contract[] @relation("freelancer")
+  createdAt           DateTime   @default(now())
+}
+
+model Contract {
+  id                 String    @id @default(cuid())
+  title              String
+  summary            String    @default("")
+  rawThread          String    @default("")
+  currency           String    @default("USD")
+  // DRAFT | AGREED | ACTIVE | COMPLETED  (milestones carry the fine-grained escrow state)
+  status             String    @default("DRAFT")
+  clientId           String
+  freelancerId       String
+  client             User      @relation("client", fields: [clientId], references: [id])
+  freelancer         User      @relation("freelancer", fields: [freelancerId], references: [id])
+  clientAcceptedAt     DateTime?
+  freelancerAcceptedAt DateTime?
+  extractionJson     String    @default("{}") // raw Contract Agent output
+  riskFlag           String?   // e.g. "AUTH_EXPIRING", "PAYOUT_FAILED", "LOW_SCORE"
+  milestones         Milestone[]
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+}
+
+model Milestone {
+  id            String    @id @default(cuid())
+  contractId    String
+  contract      Contract  @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  idx           Int
+  title         String
+  description   String    @default("")
+  amountCents   Int
+  currency      String    @default("USD")
+  dueDate       DateTime?
+  // DRAFT → AGREED → FUNDED → SUBMITTED → VERIFIED → (APPROVED | DISPUTED → MEDIATED) → SETTLED
+  status        String    @default("DRAFT")
+  stateChangedAt DateTime @default(now())
+
+  // PayPal escrow fields
+  paypalOrderId    String?
+  authorizationId  String?
+  authStatus       String?   // CREATED | CAPTURED | PARTIALLY_CAPTURED | VOIDED | EXPIRED
+  authCreatedAt    DateTime?
+  authExpiresAt    DateTime? // 29-day validity
+  honorPeriodEndsAt DateTime? // 3-day honor period
+  captureId        String?
+  capturedCents    Int       @default(0)
+  releasedCents    Int       @default(0) // returned to client (voided remainder)
+  feeCents         Int       @default(0)
+  payoutCents      Int       @default(0)
+  payoutBatchId    String?
+  payoutItemId     String?
+  payoutStatus     String?   // PENDING | SUCCESS | FAILED | UNCLAIMED ...
+  payoutAttempts   Int       @default(0)
+  lastPaypalEvent  String?
+  lastPaypalEventAt DateTime?
+
+  verifierScore Float?
+  autoApproveAt DateTime?
+  riskFlag      String?
+
+  criteria      Criterion[]
+  deliveries    Delivery[]
+  verifications Verification[]
+  disputes      Dispute[]
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model Criterion {
+  id          String    @id @default(cuid())
+  milestoneId String
+  milestone   Milestone @relation(fields: [milestoneId], references: [id], onDelete: Cascade)
+  idx         Int
+  text        String
+  // How it should be checked: VISUAL | CONTENT | FUNCTIONAL | CODE | WORD_COUNT
+  checkType   String    @default("CONTENT")
+  minWords    Int?      // for WORD_COUNT criteria (computed in code, never by the LLM)
+  results     CriterionResult[]
+}
+
+model Delivery {
+  id          String    @id @default(cuid())
+  milestoneId String
+  milestone   Milestone @relation(fields: [milestoneId], references: [id], onDelete: Cascade)
+  type        String    // URL | GITHUB | TEXT
+  content     String    // url or text body
+  note        String    @default("")
+  verifications Verification[]
+  createdAt   DateTime  @default(now())
+}
+
+model Verification {
+  id          String    @id @default(cuid())
+  milestoneId String
+  milestone   Milestone @relation(fields: [milestoneId], references: [id], onDelete: Cascade)
+  deliveryId  String
+  delivery    Delivery  @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
+  scorePct    Float
+  summary     String
+  model       String
+  rawJson     String    @default("{}")
+  results     CriterionResult[]
+  screenshots Screenshot[]
+  createdAt   DateTime  @default(now())
+}
+
+model CriterionResult {
+  id             String       @id @default(cuid())
+  verificationId String
+  verification   Verification @relation(fields: [verificationId], references: [id], onDelete: Cascade)
+  criterionId    String
+  criterion      Criterion    @relation(fields: [criterionId], references: [id], onDelete: Cascade)
+  passed         Boolean
+  confidence     Float
+  evidence       String
+  screenshotUrl  String?
+}
+
+model Screenshot {
+  id             String       @id @default(cuid())
+  verificationId String?
+  verification   Verification? @relation(fields: [verificationId], references: [id], onDelete: Cascade)
+  label          String       // desktop | mobile-375
+  mime           String       @default("image/jpeg")
+  data           Bytes
+  createdAt      DateTime     @default(now())
+}
+
+model Dispute {
+  id                  String    @id @default(cuid())
+  milestoneId         String
+  milestone           Milestone @relation(fields: [milestoneId], references: [id], onDelete: Cascade)
+  reason              String
+  clientStatement     String    @default("")
+  freelancerStatement String    @default("")
+  status              String    @default("OPEN") // OPEN | PROPOSED | AGREED | ESCALATED
+  round               Int       @default(0)
+  agreedFreelancerPct Float?
+  proposals           MediationProposal[]
+  createdAt           DateTime  @default(now())
+}
+
+model MediationProposal {
+  id                 String   @id @default(cuid())
+  disputeId          String
+  dispute            Dispute  @relation(fields: [disputeId], references: [id], onDelete: Cascade)
+  round              Int
+  freelancerPct      Float
+  reasoning          String
+  clientResponse     String?  // ACCEPT | COUNTER
+  clientCounterPct   Float?
+  clientCounterNote  String?
+  freelancerResponse String?
+  freelancerCounterPct  Float?
+  freelancerCounterNote String?
+  createdAt          DateTime @default(now())
+}
+
+// Agents never move money. They emit a ProposedAction; a human confirms; the server executes.
+model ProposedAction {
+  id          String    @id @default(cuid())
+  contractId  String?
+  milestoneId String?
+  source      String    // agent:mediator | agent:assistant | system:auto-approve | user
+  type        String    // CAPTURE_AND_PAYOUT | PARTIAL_SETTLE | CREATE_INVOICE | SEND_INVOICE | SEND_REMINDER | REAUTHORIZE | TOOLKIT_CALL
+  title       String
+  paramsJson  String    @default("{}")
+  rationale   String    @default("")
+  status      String    @default("PENDING") // PENDING | EXECUTED | REJECTED | FAILED
+  requestedFor String?  // user id who must confirm
+  confirmedBy String?
+  resultJson  String?
+  createdAt   DateTime  @default(now())
+  executedAt  DateTime?
+}
+
+model AuditEvent {
+  id            String   @id @default(cuid())
+  contractId    String?
+  milestoneId   String?
+  actor         String   // user:<id> | agent:contract | agent:verifier | agent:mediator | agent:assistant | paypal:webhook | system
+  kind          String   // AGENT_DECISION | PAYPAL_API | WEBHOOK | STATE_CHANGE | HUMAN_ACTION | ERROR
+  action        String   // e.g. "POST /v2/checkout/orders"
+  summary       String
+  requestId     String?  // PayPal-Request-Id (idempotency key)
+  paypalDebugId String?
+  resourceId    String?  // order/auth/capture/payout id
+  httpStatus    Int?
+  durationMs    Int?
+  requestJson   String?
+  responseJson  String?
+  createdAt     DateTime @default(now())
+
+  @@index([contractId])
+  @@index([milestoneId])
+}
+
+model WebhookEvent {
+  id          String   @id // PayPal event id — primary key gives replay dedupe for free
+  eventType   String
+  resourceId  String?
+  verified    Boolean
+  payloadJson String
+  processedAt DateTime @default(now())
+}
