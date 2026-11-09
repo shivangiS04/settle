@@ -1,0 +1,46 @@
+# Render Blueprint — New → Blueprint → select this repo.
+databases:
+  - name: settle-db
+    plan: basic-256mb
+    databaseName: settle
+    user: settle
+
+services:
+  - type: web
+    name: settle
+    runtime: docker
+    plan: standard # Playwright/Chromium needs ~1GB RAM for screenshots
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: settle-db
+          property: connectionString
+      - key: PAYPAL_API_BASE
+        value: https://api-m.sandbox.paypal.com
+      - key: PAYPAL_CLIENT_ID
+        sync: false
+      - key: PAYPAL_CLIENT_SECRET
+        sync: false
+      - key: NEXT_PUBLIC_PAYPAL_CLIENT_ID
+        sync: false
+      - key: PAYPAL_WEBHOOK_ID
+        sync: false
+      - key: DEMO_CLIENT_PAYPAL_EMAIL
+        sync: false
+      - key: DEMO_FREELANCER_PAYPAL_EMAIL
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: ANTHROPIC_MODEL
+        value: claude-opus-5-5
+      - key: PLATFORM_FEE_PCT
+        value: "3"
+      - key: AUTO_APPROVE_HOURS
+        value: "48"
+      - key: SEED_ON_START
+        value: "1" # set to 0 after the first deploy to keep your data
+      - key: CRON_SECRET
+        generateValue: true

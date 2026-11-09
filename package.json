@@ -7,9 +7,10 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "seed": "tsx --env-file=.env scripts/seed.ts",
-    "postinstall": "prisma generate",
-    "typecheck": "tsc --noEmit"
+    "seed": "tsx scripts/seed.ts",
+    "postinstall": "prisma generate && (playwright install chromium || echo \"playwright browser install skipped\")",
+    "typecheck": "tsc --noEmit",
+    "db:postgres": "node scripts/use-postgres.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.6.0",

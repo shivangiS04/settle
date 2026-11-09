@@ -64,7 +64,7 @@ export async function runVerification(milestoneId: string, deliveryId: string, a
         ? `Read ${repo.repo}: ${repo.facts.fileCount} files, README ${repo.facts.readmeWords} words, tests=${repo.facts.hasTests}`
         : `Text delivery: ${textWords} words (computed in code)`,
     durationMs: Date.now() - t0,
-    response: page ? { ...page, viewports: page.viewports.map(({ screenshot: _s, ...v }) => v), text: page.text.slice(0, 2000) } : repo ? { ...repo, files: repo.files.map((f) => f.path) } : { words: textWords },
+    response: page ? { ...page, viewports: page.viewports.map((v) => ({ label: v.label, width: v.width, scrollWidth: v.scrollWidth, horizontalOverflow: v.horizontalOverflow })), text: page.text.slice(0, 2000) } : repo ? { ...repo, files: repo.files.map((f) => f.path) } : { words: textWords },
   });
 
   // 2) Ask Claude to judge each criterion against the evidence.
