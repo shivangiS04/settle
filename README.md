@@ -187,6 +187,8 @@ Provider-specific details:
 
 All prompts are in [`lib/agents/prompts.ts`](lib/agents/prompts.ts).
 
+**When the LLM is unavailable:** Gemini calls retry on 429 / `RESOURCE_EXHAUSTED` / 503 with exponential backoff (max 3 tries, honoring `Retry-After` / `retryDelay`), then move to the next model in the fallback chain. Claude calls use the SDK's built-in retries. If everything fails, agents throw a typed `LlmError` (`busy`, `auth`, `refused`, `invalid_output`). The failure is audited, the API returns 503, and the UI shows a friendly message such as *"The AI is busy — please retry in a few seconds"*, never a stack trace. An invalid key fails fast as `auth`.
+
 | Agent | Input | Decides | Does **not** decide |
 |---|---|---|---|
 | **Contract Agent** | Pasted chat thread | Title, milestones, amounts, due dates, 2–5 testable criteria and their check type, open ambiguities | Anything binding. Both humans edit and accept. |

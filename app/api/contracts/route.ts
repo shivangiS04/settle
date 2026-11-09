@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { errorPayload } from "@/lib/agents/errors";
 import { randomUUID } from "crypto";
 import { prisma } from "@/lib/db";
 import { audit } from "@/lib/audit";
@@ -59,6 +60,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ id: contract.id });
   } catch (e) {
     console.error("[contracts:create]", e);
-    return NextResponse.json({ error: (e as Error).message }, { status: 400 });
+    const { body, status } = errorPayload(e);
+    return NextResponse.json(body, { status });
   }
 }

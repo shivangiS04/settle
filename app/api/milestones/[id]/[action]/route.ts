@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { errorPayload } from "@/lib/agents/errors";
 import { prisma } from "@/lib/db";
 import { audit } from "@/lib/audit";
 import { requireUser } from "@/lib/session";
@@ -168,6 +169,7 @@ export async function POST(req: Request, { params }: Ctx) {
     }
   } catch (e) {
     console.error(`[milestone:${action}]`, e);
-    return NextResponse.json({ error: (e as Error).message }, { status: 400 });
+    const { body, status } = errorPayload(e);
+    return NextResponse.json(body, { status });
   }
 }

@@ -6,6 +6,7 @@ import { ASSISTANT_SYSTEM } from "./prompts";
 import { toolkitToolsForClaude, TOOLKIT_TOOL_NAMES } from "./toolkit";
 import { llmMock, llmProvider } from "../mode";
 import { geminiGenerate, geminiText, type GContent } from "./gemini";
+import { LlmError, fromAnthropicError } from "./errors";
 import { authHealth } from "../escrow";
 import { centsToValue } from "../utils";
 
@@ -73,7 +74,7 @@ async function getMyWork(user: User) {
   }));
 }
 
-export async function runAssistant(user: User, history: ChatTurn[]) {
+async function runAssistantInner(user: User, history: ChatTurn[]) {
   const proposed: string[] = [];
   const ctx = `User: ${user.name} (${user.role.toLowerCase()}), PayPal email ${user.paypalEmail}. Today: ${new Date().toISOString().slice(0, 10)}. PayPal environment: sandbox.`;
 
@@ -85,7 +86,8 @@ export async function runAssistant(user: User, history: ChatTurn[]) {
   let reply = "";
 
   for (let i = 0; i < 6; i++) {
-    const res = await anthropic().beta.messages.create({
+    const res = await anthropic()
+      .beta.messages.create({
       model: MODEL,
       max_tokens: 16000,
       system: ASSISTANT_SYSTEM(ctx),
@@ -95,7 +97,10 @@ export async function runAssistant(user: User, history: ChatTurn[]) {
       output_config: { effort: "low" },
       betas: ["server-side-fallback-2026-07-01"],
       fallbacks: "default",
-    });
+    })
+      .catch((e) => {
+        throw fromAnthropicError(e);
+      });
     messages.push({ role: "assistant", content: res.content });
     reply = res.content
       .filter((b): b is Anthropic.Beta.BetaTextBlock => b.type === "text")
@@ -253,4 +258,18 @@ async function mockAssistant(user: User, history: ChatTurn[]) {
     reply: lines.length ? `[MOCK] Waiting on you:\n${lines.join("\n")}` : "[MOCK] Nothing is waiting on you right now.",
     proposed,
   };
+}
+
+/**
+ * Public entry: on LLM failure (rate limit, overload, bad key — after retries and model fallbacks)
+ * audit it and throw a typed LlmError whose `userMessage` the UI shows ("The AI is busy — …").
+ */
+export async function runAssistant(user: User, history: ChatTurn[]) {
+  try {
+    return await runAssistantInner(user, history);
+  } catch (e) {
+    const err = e instanceof LlmError ? e : new LlmError("other", (e as Error)?.message ?? String(e), llmProvider());
+    await audit({ actor: "agent:assistant", kind: "ERROR", action: `assistant.llm_${err.kind}`, summary: `Assistant failed (${err.kind}): ${err.message.slice(0, 300)}` });
+    throw err;
+  }
 }

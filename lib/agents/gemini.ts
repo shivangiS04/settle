@@ -3,6 +3,7 @@
  * Get a free key at https://aistudio.google.com/apikey and set GEMINI_API_KEY.
  */
 import type Anthropic from "@anthropic-ai/sdk";
+import { LlmError } from "./errors";
 
 export const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-3.5-flash";
 /** Tried in order when a model is overloaded (503), missing (404) or rate-limited past retries. */
@@ -66,17 +67,18 @@ export async function geminiGenerate(body: {
   if (body.tools?.length) {
     req.tools = [{ functionDeclarations: body.tools.map((t) => ({ name: t.name, description: t.description, parametersJsonSchema: clean(t.parameters) })) }];
   }
-  // Free tier: retry 429/5xx with backoff, then fall through to the next model.
+  // Free tier: on 429 / RESOURCE_EXHAUSTED / 503 retry with exponential backoff (max 3 tries, honoring
+  // retry-after), then fall through to the next model in the chain. Bad keys fail fast as `auth`.
   let lastErr = "";
   for (const model of FALLBACKS) {
-    for (let attempt = 0; attempt < 3; attempt++) {
+    for (let attempt = 1; attempt <= 3; attempt++) {
       let r: Response;
       try {
         r = await fetch(`${BASE}/models/${model}:generateContent`, {
           method: "POST",
           headers: { "Content-Type": "application/json", "x-goog-api-key": key },
           body: JSON.stringify(req),
-          signal: AbortSignal.timeout(90_000),
+          signal: AbortSignal.timeout(60_000),
         });
       } catch (e) {
         lastErr = `${model}: ${(e as Error).message}`;
@@ -89,15 +91,29 @@ export async function geminiGenerate(body: {
       }
       const text = await r.text();
       lastErr = `${model} ${r.status}: ${text.slice(0, 300)}`;
-      if (r.status === 404 || r.status === 503) break; // missing/overloaded → next model now
-      if (r.status === 429 || r.status >= 500) {
-        await new Promise((res) => setTimeout(res, 2000 * 2 ** attempt));
-        continue;
+      if (r.status === 401 || r.status === 403 || /API_KEY_INVALID|API key not valid|PERMISSION_DENIED/i.test(text)) {
+        throw new LlmError("auth", lastErr, "gemini");
       }
-      throw new Error(`Gemini ${lastErr}`); // 400s etc. are real errors
+      if (r.status === 404) break; // model not available on this key → next model
+      const busy = r.status === 429 || r.status === 503 || r.status === 500 || /RESOURCE_EXHAUSTED|UNAVAILABLE|overloaded/i.test(text);
+      if (!busy) {
+        throw new LlmError("other", lastErr, "gemini"); // a real 400 (bad request) won't fix itself on retry
+      }
+      if (attempt < 3) await sleep(retryDelayMs(r, text, attempt));
     }
   }
-  throw new Error(`Gemini unavailable: ${lastErr}`);
+  throw new LlmError("busy", `all Gemini models failed: ${lastErr}`, "gemini");
+}
+
+const sleep = (ms: number) => new Promise((res) => setTimeout(res, ms));
+
+/** Honors Retry-After / RetryInfo.retryDelay when present (capped), else exponential backoff with jitter. */
+function retryDelayMs(r: Response, body: string, attempt: number) {
+  const header = Number(r.headers.get("retry-after"));
+  const info = body.match(/"retryDelay"\s*:\s*"(\d+(?:\.\d+)?)s"/);
+  const hinted = header > 0 ? header * 1000 : info ? Number(info[1]) * 1000 : 0;
+  const backoff = 1000 * 2 ** attempt + Math.random() * 500;
+  return Math.min(Math.max(hinted, backoff), 10_000);
 }
 
 export function geminiText(res: GResponse) {

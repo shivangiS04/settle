@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { errorPayload } from "@/lib/agents/errors";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/session";
 import { runAssistant } from "@/lib/agents/assistant";
@@ -17,7 +18,8 @@ export async function POST(req: Request) {
     return NextResponse.json({ reply, actions });
   } catch (e) {
     console.error("[assistant]", e);
-    return NextResponse.json({ error: (e as Error).message }, { status: 400 });
+    const { body, status } = errorPayload(e);
+    return NextResponse.json(body, { status });
   }
 }
 
