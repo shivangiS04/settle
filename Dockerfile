@@ -15,5 +15,5 @@ COPY . .
 RUN node scripts/use-postgres.mjs && npx prisma generate && npm run build
 
 EXPOSE 3000
-# Sync schema to Postgres, optionally seed (SEED_ON_START=1), then serve.
-CMD ["sh", "-c", "npx prisma db push --skip-generate && if [ \"$SEED_ON_START\" = \"1\" ]; then npm run seed; fi && npx next start -p ${PORT:-3000}"]
+# Sync schema to Postgres, seed only if the DB is empty (safe on every boot), then serve.
+CMD ["sh", "-c", "npx prisma db push --skip-generate && npm run seed && npx next start -p ${PORT:-3000}"]

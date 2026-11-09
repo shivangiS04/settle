@@ -41,5 +41,3 @@ services:
         value: "3"
       - key: AUTO_APPROVE_HOURS
         value: "48"
-      - key: SEED_ON_START
-        value: "1" # set to 0 after the first deploy to keep your data

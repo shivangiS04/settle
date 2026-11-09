@@ -194,7 +194,7 @@ npm i && npx prisma migrate dev && npm run seed && npm run dev
 Open <http://localhost:3000>. Use the header switcher to **View as Client / View as Freelancer**.
 
 - `npm i` also runs `prisma generate` and downloads Playwright's Chromium.
-- `npm run seed` wipes app data and creates 2 users + 5 contracts across the lifecycle. Seeded PayPal ids are prefixed `SEED-`, so for real sandbox money movement, create a fresh contract from a chat.
+- `npm run seed` creates 2 users + 5 contracts across the lifecycle **if the database is empty**. `npm run seed -- --reset` wipes app data and reseeds. Seeded PayPal ids are prefixed `SEED-`, so for real sandbox money movement, create a fresh contract from a chat.
 - Webhooks can't reach localhost without a tunnel. The app still works because every API response updates state synchronously, a tick polls payout status, and webhooks only confirm.
 - Test the webhook endpoint in mock mode: `curl -X POST localhost:3000/api/webhooks/paypal -H 'x-settle-simulated: 1' -H 'content-type: application/json' -d '{"id":"WH-1","event_type":"PAYMENT.CAPTURE.COMPLETED","resource":{"id":"X"}}'`. Send it twice to see `"duplicate"`.
 
@@ -207,7 +207,7 @@ The repo includes a [`render.yaml`](render.yaml) Blueprint: a Docker web service
 1. Push this repo to GitHub.
 2. In Render: **New → Blueprint** → pick the repo → **Apply**.
 3. Fill in the `sync: false` env vars: `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET`, `NEXT_PUBLIC_PAYPAL_CLIENT_ID` (same as the client ID), `PAYPAL_WEBHOOK_ID`, `DEMO_*_PAYPAL_EMAIL`, `ANTHROPIC_API_KEY`.
-4. The first deploy runs `prisma db push` and seeds the database (`SEED_ON_START=1`). **Set `SEED_ON_START=0` afterwards** so restarts keep your data.
+4. Every start runs `prisma db push`, then `npm run seed`. The seed **only runs when the database is empty**, so restarts and redeploys keep your data. To wipe and reseed on purpose, use `npm run seed -- --reset` (or `SEED_RESET=1`), or the **Reset demo** button.
 5. Point your sandbox webhook at `https://<service>.onrender.com/api/webhooks/paypal`.
 
 How the build works: `scripts/use-postgres.mjs` switches the Prisma provider from `sqlite` to `postgresql` at build time. The schema avoids enums and JSON columns so it runs unchanged on both. Background jobs (auto-approve, auth expiry, payout sync) run every 60s inside the server via `instrumentation.ts`. You can also call `POST /api/cron/tick` with `Authorization: Bearer $CRON_SECRET`.
