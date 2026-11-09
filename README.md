@@ -146,7 +146,7 @@ lib/tick.ts              auto-approve, auth-expiry flags, payout status polling
 
 All prompts are in [`lib/agents/prompts.ts`](lib/agents/prompts.ts).
 
-**Free alternative: Google Gemini.** Set `GEMINI_API_KEY` instead of `ANTHROPIC_API_KEY`. A free key comes from [aistudio.google.com/apikey](https://aistudio.google.com/apikey) with just a Google account. The same agents, prompts, JSON-schema output, Zod validation and repair loop run on `gemini-flash-latest` (override with `GEMINI_MODEL`). The Verifier still gets screenshots, and the Assistant uses Gemini function calling over the same Agent Toolkit tools. If both keys are set, Claude is used unless `LLM_PROVIDER=gemini`.
+**Free alternative: Google Gemini.** Set `GEMINI_API_KEY` instead of `ANTHROPIC_API_KEY`. A free key comes from [aistudio.google.com/apikey](https://aistudio.google.com/apikey) with just a Google account. The same agents, prompts, JSON-schema output, Zod validation and repair loop run on `gemini-3.5-flash` (with automatic fallback to other Gemini models when one is overloaded) (override with `GEMINI_MODEL`). The Verifier still gets screenshots, and the Assistant uses Gemini function calling over the same Agent Toolkit tools. If both keys are set, Claude is used unless `LLM_PROVIDER=gemini`.
 
 | Agent | Input | Decides | Does **not** decide |
 |---|---|---|---|

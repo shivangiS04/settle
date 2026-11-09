@@ -62,7 +62,7 @@ async function main() {
     console.log(r.ok ? "✅ Anthropic API key works" : `❌ Anthropic API key rejected (${r.status})`);
   }
   if (process.env.GEMINI_API_KEY) {
-    const model = process.env.GEMINI_MODEL || "gemini-flash-latest";
+    const model = process.env.GEMINI_MODEL || "gemini-3.5-flash";
     const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}`, { headers: { "x-goog-api-key": process.env.GEMINI_API_KEY } });
     console.log(r.ok ? `✅ Gemini API key works (${model})` : `❌ Gemini key/model rejected (${r.status}): ${(await r.text()).slice(0, 200)}`);
   }

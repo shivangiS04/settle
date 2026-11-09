@@ -4,7 +4,9 @@
  */
 import type Anthropic from "@anthropic-ai/sdk";
 
-export const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-flash-latest";
+export const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-3.5-flash";
+/** Tried in order when a model is overloaded (503), missing (404) or rate-limited past retries. */
+const FALLBACKS = Array.from(new Set([GEMINI_MODEL, "gemini-3.5-flash", "gemini-3-flash-preview", "gemini-flash-lite-latest"]));
 const BASE = "https://generativelanguage.googleapis.com/v1beta";
 
 export type GPart = {
@@ -64,21 +66,38 @@ export async function geminiGenerate(body: {
   if (body.tools?.length) {
     req.tools = [{ functionDeclarations: body.tools.map((t) => ({ name: t.name, description: t.description, parametersJsonSchema: clean(t.parameters) })) }];
   }
-  // Free tier is rate-limited: retry 429/5xx with backoff.
-  for (let attempt = 0; ; attempt++) {
-    const r = await fetch(`${BASE}/models/${GEMINI_MODEL}:generateContent`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "x-goog-api-key": key },
-      body: JSON.stringify(req),
-    });
-    if (r.ok) return (await r.json()) as GResponse;
-    const text = await r.text();
-    if ((r.status === 429 || r.status >= 500) && attempt < 3) {
-      await new Promise((res) => setTimeout(res, 2000 * 2 ** attempt));
-      continue;
+  // Free tier: retry 429/5xx with backoff, then fall through to the next model.
+  let lastErr = "";
+  for (const model of FALLBACKS) {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      let r: Response;
+      try {
+        r = await fetch(`${BASE}/models/${model}:generateContent`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-goog-api-key": key },
+          body: JSON.stringify(req),
+          signal: AbortSignal.timeout(90_000),
+        });
+      } catch (e) {
+        lastErr = `${model}: ${(e as Error).message}`;
+        break; // timeout/network → next model
+      }
+      if (r.ok) {
+        const j = (await r.json()) as GResponse;
+        j.modelVersion = j.modelVersion ?? model;
+        return j;
+      }
+      const text = await r.text();
+      lastErr = `${model} ${r.status}: ${text.slice(0, 300)}`;
+      if (r.status === 404 || r.status === 503) break; // missing/overloaded → next model now
+      if (r.status === 429 || r.status >= 500) {
+        await new Promise((res) => setTimeout(res, 2000 * 2 ** attempt));
+        continue;
+      }
+      throw new Error(`Gemini ${lastErr}`); // 400s etc. are real errors
     }
-    throw new Error(`Gemini ${r.status}: ${text.slice(0, 500)}`);
   }
+  throw new Error(`Gemini unavailable: ${lastErr}`);
 }
 
 export function geminiText(res: GResponse) {

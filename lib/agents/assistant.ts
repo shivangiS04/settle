@@ -201,7 +201,10 @@ function describeToolkit(name: string, a: Record<string, unknown>) {
   const amt = (a.items as { unit_amount?: { value?: string }; quantity?: string }[] | undefined)?.reduce((s, i) => s + Number(i.unit_amount?.value ?? 0) * Number(i.quantity ?? 1), 0);
   switch (name) {
     case "create_invoice":
-      return `Create PayPal invoice${amt ? ` for ${amt.toFixed(2)} ${a.currency_code ?? "USD"}` : ""}${a.recipient_email ? ` to ${a.recipient_email}` : ""}`;
+      return `Create PayPal invoice${amt ? ` for ${amt.toFixed(2)} ${a.currency_code ?? "USD"}` : ""}${(() => {
+        const to = a.recipient_email ?? (a.primary_recipients as { billing_info?: { email_address?: string } }[] | undefined)?.[0]?.billing_info?.email_address;
+        return to ? ` to ${to}` : "";
+      })()}`;
     case "send_invoice":
       return `Send PayPal invoice ${a.invoice_id ?? ""}`;
     case "send_invoice_reminder":
