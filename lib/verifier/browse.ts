@@ -44,12 +44,25 @@ export async function assertPublicUrl(raw: string) {
   }
   if (!["http:", "https:"].includes(u.protocol)) throw new Error("Only http(s) URLs can be verified");
   const host = u.hostname;
+  // The app's own public host (APP_URL, e.g. https://settle-wuro.onrender.com) is always allowed, so the
+  // built-in /demo-delivery page can be verified. It still goes through the private-IP check below.
+  // For LOCAL dev only, VERIFIER_ALLOW_SELF=1 also lets a localhost APP_URL through. Never set it in production.
+  const self = selfHost();
+  if (self && host === self && process.env.VERIFIER_ALLOW_SELF === "1") return u;
   if (host === "localhost" || host.endsWith(".local") || host.endsWith(".internal")) throw new Error("Private hosts are not allowed");
   const addrs = net.isIP(host) ? [host] : (await dns.lookup(host, { all: true })).map((a) => a.address);
   for (const a of addrs) {
     if (isPrivate(a)) throw new Error(`Host resolves to a private address (${a})`);
   }
   return u;
+}
+
+function selfHost() {
+  try {
+    return process.env.APP_URL ? new URL(process.env.APP_URL).hostname : null;
+  } catch {
+    return null;
+  }
 }
 
 function isPrivate(ip: string) {

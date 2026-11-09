@@ -1,8 +1,32 @@
 # Settle: AI escrow for freelance work, on PayPal
 
 > Built for the PayPal **"Build What's Next with PayPal and AI"** hackathon. Runs fully on the **PayPal Sandbox**.
->
-> **Live demo:** https://settle-wuro.onrender.com (free tier: the first load after idle can take about a minute)
+
+
+## Try it in 2 minutes
+
+**Live demo: https://settle-wuro.onrender.com**. It's on Render's free tier, so the first load after idle can take about a minute.
+
+To fund escrow you log in to PayPal with a **sandbox test account**. It uses fake money; nothing real is charged.
+
+```
+Sandbox buyer email:    <FILL_ME>
+Sandbox buyer password: <FILL_ME>
+```
+
+1. Use the header switch **View as Client / View as Freelancer** to act as either party.
+2. As the Client, go to **New from chat → Use sample thread → Extract contract with AI**.
+3. Click **Accept terms**, switch to **Freelancer**, and click **Accept terms** again. The status becomes AGREED.
+4. Switch to **Client** and click the PayPal button on milestone 1. Log in with the sandbox buyer above. The status becomes **FUNDED**: the money is held, not charged.
+5. Switch to **Freelancer**, choose **Live URL**, and submit this known-good delivery: **https://settle-wuro.onrender.com/demo-delivery/**. The Verifier Agent checks it at desktop and 375px.
+6. Switch to **Client** and click **Approve & release**. This captures the payment, takes the 3% fee and pays out to the freelancer.
+7. Open the **Ops dashboard (/dashboard)** and click the contract to see the audit trail of every AI decision and PayPal call.
+
+If the data looks used, click **↺ Reset demo** in the header. It resets the app data only and never touches PayPal.
+
+![TODO: contract extracted from a chat thread](docs/screenshots/contract-from-chat.png)
+![TODO: verifier results with desktop + 375px screenshots](docs/screenshots/verifier-results.png)
+![TODO: ops dashboard with audit trail panel](docs/screenshots/ops-dashboard.png)
 
 ## The problem
 

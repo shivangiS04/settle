@@ -19,6 +19,8 @@ services:
         fromDatabase:
           name: settle-db
           property: connectionString
+      - key: APP_URL
+        value: https://settle-wuro.onrender.com # public URL; lets the verifier check /demo-delivery/
       - key: PAYPAL_API_BASE
         value: https://api-m.sandbox.paypal.com
       - key: PAYPAL_CLIENT_ID
