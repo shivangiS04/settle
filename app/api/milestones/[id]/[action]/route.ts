@@ -8,6 +8,7 @@ import { centsToValue, splitFee } from "@/lib/utils";
 import { runVerification } from "@/lib/agents/verifier";
 import { assertPublicUrl } from "@/lib/verifier/browse";
 import { parseRepo } from "@/lib/verifier/github";
+import { addFreelancerStatement, openDispute, requestMediation, respondToProposal } from "@/lib/dispute";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -60,7 +61,7 @@ export async function POST(req: Request, { params }: Ctx) {
         // The client's click IS the human confirmation. We still record it as a ProposedAction
         // so every money movement has the same explainable shape in the audit trail.
         needClient();
-        if (!["VERIFIED", "SUBMITTED"].includes(m.status)) throw new Error(`Cannot approve from ${m.status}`);
+        if (!["VERIFIED", "SUBMITTED", "DISPUTED"].includes(m.status)) throw new Error(`Cannot approve from ${m.status}`);
         const { feeCents, netCents } = splitFee(m.amountCents);
         const pa = await prisma.proposedAction.create({
           data: {
@@ -123,6 +124,39 @@ export async function POST(req: Request, { params }: Ctx) {
         if (!["SUBMITTED", "VERIFIED"].includes(m.status)) throw new Error(`Cannot verify while ${m.status}`);
         startVerification(id, d.id);
         return NextResponse.json({ ok: true });
+      }
+      case "dispute": {
+        needClient();
+        const reason = String(body.reason ?? "").trim();
+        if (reason.length < 5) throw new Error("Please describe what is wrong");
+        const d = await openDispute(id, user.id, reason, String(body.statement ?? "").trim());
+        return NextResponse.json({ ok: true, disputeId: d.id });
+      }
+      case "dispute-statement": {
+        needFreelancer();
+        const d = await prisma.dispute.findFirstOrThrow({ where: { milestoneId: id }, orderBy: { createdAt: "desc" } });
+        await addFreelancerStatement(d.id, user.id, String(body.statement ?? "").trim());
+        // Freelancer's side is in → mediator proposes a split right away.
+        if (d.round === 0) await requestMediation(d.id);
+        return NextResponse.json({ ok: true });
+      }
+      case "mediate": {
+        if (!isClient && !isFreelancer) throw new Error("Not a party to this contract");
+        const d = await prisma.dispute.findFirstOrThrow({ where: { milestoneId: id }, orderBy: { createdAt: "desc" } });
+        await requestMediation(d.id);
+        return NextResponse.json({ ok: true });
+      }
+      case "mediation-respond": {
+        if (!isClient && !isFreelancer) throw new Error("Not a party to this contract");
+        const r = await respondToProposal(
+          String(body.proposalId),
+          user,
+          isClient ? "CLIENT" : "FREELANCER",
+          body.response === "COUNTER" ? "COUNTER" : "ACCEPT",
+          body.counterPct != null ? Number(body.counterPct) : undefined,
+          body.note ? String(body.note).slice(0, 1000) : undefined,
+        );
+        return NextResponse.json({ ok: true, ...r });
       }
       case "retry-payout": {
         if (m.payoutStatus !== "FAILED") throw new Error("Payout is not in a failed state");

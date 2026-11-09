@@ -5,7 +5,8 @@ import { ActionButton } from "@/components/ActionButton";
 import { authHealth } from "@/lib/escrow";
 import { AutoRefresh, DeliveryForm } from "@/components/DeliveryForm";
 import { VerificationPanel } from "@/components/VerificationPanel";
-import { centsToValue, money, splitFee } from "@/lib/utils";
+import { centsToValue, feePct, money, splitFee } from "@/lib/utils";
+import { DisputeButton, DisputePanel } from "@/components/DisputePanel";
 
 export type MilestoneFull = Prisma.MilestoneGetPayload<{
   include: {
@@ -33,6 +34,7 @@ export function MilestoneCard({
   const health = authHealth(m);
   const { feeCents, netCents } = splitFee(m.amountCents);
   const latestDelivery = m.deliveries[0];
+  const dispute = m.disputes[0];
   const pending = m.status === "SUBMITTED" && !!latestDelivery && !m.verifications.some((v) => v.deliveryId === latestDelivery.id);
   // The verifier normally finishes in <60s; after 3 min assume it failed (see audit trail) and offer a retry.
   const stalled = pending && Date.now() - latestDelivery.createdAt.getTime() > 180_000;
@@ -122,8 +124,21 @@ export function MilestoneCard({
         )}
 
         {/* Approve (client) */}
-        {viewer.isClient && ["SUBMITTED", "VERIFIED"].includes(m.status) && (
+        {dispute && ["DISPUTED", "MEDIATED", "SETTLED"].includes(m.status) && (
+          <DisputePanel
+            milestoneId={m.id}
+            dispute={dispute}
+            isClient={viewer.isClient}
+            isFreelancer={viewer.isFreelancer}
+            amountCents={m.amountCents}
+            currency={m.currency}
+            feePct={feePct()}
+          />
+        )}
+
+        {viewer.isClient && ["SUBMITTED", "VERIFIED", "DISPUTED"].includes(m.status) && (
           <div className="flex flex-wrap items-center gap-2 border-t pt-3">
+            {m.status !== "DISPUTED" && <DisputeButton milestoneId={m.id} />}
             <ActionButton
               variant="success"
               path={`/api/milestones/${m.id}/approve`}
