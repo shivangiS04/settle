@@ -2,7 +2,8 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { currentUser } from "@/lib/session";
 import { Card, CardContent, CardHeader, CardTitle, StatusPill } from "@/components/ui";
-import { money } from "@/lib/utils";
+import { money, safeJson } from "@/lib/utils";
+import { DraftEditor } from "@/components/DraftEditor";
 import { paypalMock } from "@/lib/mode";
 import { MilestoneCard } from "@/components/MilestoneCard";
 import { AuditTrail } from "@/components/AuditTrail";
@@ -50,9 +51,40 @@ export default async function ContractPage({ params }: { params: { id: string } 
           <StatusPill status={c.status} />
         </div>
 
-        {c.milestones.map((m) => (
-          <MilestoneCard key={m.id} m={m} contract={c} viewer={viewer} paypalClientId={process.env.NEXT_PUBLIC_PAYPAL_CLIENT_ID ?? ""} mock={paypalMock()} />
-        ))}
+        {c.status === "DRAFT" ? (
+          <DraftEditor
+            key={c.updatedAt.toISOString()}
+            draft={{
+              id: c.id,
+              title: c.title,
+              summary: c.summary,
+              currency: c.currency,
+              milestones: c.milestones.map((m) => ({
+                title: m.title,
+                description: m.description,
+                amount: m.amountCents / 100,
+                dueDate: m.dueDate ? m.dueDate.toISOString().slice(0, 10) : null,
+                criteria: m.criteria.map((cr) => ({ text: cr.text, checkType: cr.checkType, minWords: cr.minWords })),
+              })),
+            }}
+            ambiguities={safeJson<{ ambiguities?: string[] }>(c.extractionJson, {}).ambiguities ?? []}
+            clientAccepted={!!c.clientAcceptedAt}
+            freelancerAccepted={!!c.freelancerAcceptedAt}
+            isClient={viewer.isClient}
+            canEdit={viewer.isClient || viewer.isFreelancer}
+          />
+        ) : (
+          c.milestones.map((m) => (
+            <MilestoneCard key={m.id} m={m} contract={c} viewer={viewer} paypalClientId={process.env.NEXT_PUBLIC_PAYPAL_CLIENT_ID ?? ""} mock={paypalMock()} />
+          ))
+        )}
+
+        {c.rawThread && (
+          <details className="rounded-lg border bg-white p-4 text-sm">
+            <summary className="cursor-pointer font-medium text-slate-600">Original thread</summary>
+            <pre className="mt-2 whitespace-pre-wrap font-mono text-xs text-slate-600">{c.rawThread}</pre>
+          </details>
+        )}
       </div>
 
       <aside className="space-y-4">

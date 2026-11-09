@@ -1,0 +1,123 @@
+import Anthropic from "@anthropic-ai/sdk";
+import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
+import type * as z from "zod/v4";
+import { audit } from "../audit";
+import { llmMock } from "../mode";
+import { REPAIR_PROMPT } from "./prompts";
+
+export const MODEL = process.env.ANTHROPIC_MODEL || "claude-opus-5-5";
+
+let _client: Anthropic | null = null;
+export function anthropic() {
+  if (!_client) _client = new Anthropic();
+  return _client;
+}
+
+type AgentName = "contract" | "verifier" | "mediator" | "assistant";
+
+export type StructuredArgs<T> = {
+  agent: AgentName;
+  system: string;
+  content: Anthropic.Beta.BetaContentBlockParam[] | string;
+  /** Shape sent to the API as a JSON schema (structured outputs). Keep it constraint-light. */
+  schema: z.ZodType<T>;
+  /** Business rules checked after parsing (e.g. 2–5 criteria). Failures trigger a repair round. */
+  validate?: (v: T) => string[];
+  effort?: "low" | "medium" | "high" | "xhigh" | "max";
+  ctx: { contractId?: string | null; milestoneId?: string | null; summary: string };
+  mock: () => T;
+  /** What to log as the "input" in the audit trail (images are elided). */
+  auditInput?: unknown;
+};
+
+/**
+ * Structured call with: JSON-schema constrained output, Zod validation, business-rule
+ * validation, and up to 2 repair rounds that feed the exact errors back to the model.
+ * Every decision is written to the audit trail as AGENT_DECISION.
+ */
+export async function structuredCall<T>(args: StructuredArgs<T>): Promise<{ value: T; model: string; attempts: number }> {
+  const started = Date.now();
+  if (llmMock()) {
+    const value = args.mock();
+    await audit({
+      contractId: args.ctx.contractId,
+      milestoneId: args.ctx.milestoneId,
+      actor: `agent:${args.agent}`,
+      kind: "AGENT_DECISION",
+      action: `[MOCK] ${args.agent}.decide`,
+      summary: `[MOCK] ${args.ctx.summary}`,
+      durationMs: Date.now() - started,
+      request: args.auditInput ?? (typeof args.content === "string" ? args.content : "[multimodal input]"),
+      response: value,
+    });
+    return { value, model: "mock", attempts: 1 };
+  }
+
+  const messages: Anthropic.Beta.BetaMessageParam[] = [{ role: "user", content: args.content }];
+  const format = zodOutputFormat(args.schema);
+  let lastErr = "";
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    const res = await anthropic().beta.messages.create({
+      model: MODEL,
+      max_tokens: 16000,
+      system: args.system,
+      messages,
+      thinking: { type: "adaptive" },
+      output_config: { effort: args.effort ?? "medium", format },
+      // Server-side refusal fallback: if a safety classifier declines, the API reruns on a fallback model.
+      betas: ["server-side-fallback-2026-07-01"],
+      fallbacks: "default",
+    });
+
+    if (res.stop_reason === "refusal") {
+      lastErr = `Model declined (${res.stop_details?.category ?? "unknown"})`;
+      break;
+    }
+    const text = res.content
+      .filter((b): b is Anthropic.Beta.BetaTextBlock => b.type === "text")
+      .map((b) => b.text)
+      .join("");
+
+    const errors: string[] = [];
+    let parsed: T | undefined;
+    try {
+      const json = JSON.parse(text);
+      const r = args.schema.safeParse(json);
+      if (r.success) parsed = r.data;
+      else errors.push(...r.error.issues.map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`));
+    } catch (e) {
+      errors.push(`Invalid JSON: ${(e as Error).message}${res.stop_reason === "max_tokens" ? " (output was truncated)" : ""}`);
+    }
+    if (parsed !== undefined && args.validate) errors.push(...args.validate(parsed));
+
+    if (!errors.length && parsed !== undefined) {
+      await audit({
+        contractId: args.ctx.contractId,
+        milestoneId: args.ctx.milestoneId,
+        actor: `agent:${args.agent}`,
+        kind: "AGENT_DECISION",
+        action: `${args.agent}.decide`,
+        summary: `${args.ctx.summary}${attempt > 1 ? ` (after ${attempt - 1} repair round${attempt > 2 ? "s" : ""})` : ""}`,
+        durationMs: Date.now() - started,
+        request: { model: res.model, input: args.auditInput ?? (typeof args.content === "string" ? args.content : "[multimodal input]") },
+        response: { output: parsed, usage: res.usage },
+      });
+      return { value: parsed, model: res.model, attempts: attempt };
+    }
+
+    lastErr = errors.join("; ");
+    await audit({
+      contractId: args.ctx.contractId,
+      milestoneId: args.ctx.milestoneId,
+      actor: `agent:${args.agent}`,
+      kind: "ERROR",
+      action: `${args.agent}.repair`,
+      summary: `Attempt ${attempt} failed validation — sending repair prompt: ${lastErr.slice(0, 300)}`,
+      response: text.slice(0, 4000),
+    });
+    // Append-only repair turn: show the model its own output and the exact errors.
+    messages.push({ role: "assistant", content: text || "(empty)" });
+    messages.push({ role: "user", content: REPAIR_PROMPT(errors) });
+  }
+  throw new Error(`${args.agent} agent failed to produce valid output: ${lastErr}`);
+}
