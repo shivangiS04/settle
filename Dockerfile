@@ -12,6 +12,10 @@ COPY scripts ./scripts
 RUN node scripts/use-postgres.mjs && npm ci --include=dev
 
 COPY . .
+# NEXT_PUBLIC_* values are inlined into the client bundle at BUILD time, so they must be build args.
+# Render passes service env vars to Docker builds as build args automatically.
+ARG NEXT_PUBLIC_AG_GRID_LICENSE
+ENV NEXT_PUBLIC_AG_GRID_LICENSE=$NEXT_PUBLIC_AG_GRID_LICENSE
 RUN node scripts/use-postgres.mjs && npx prisma generate && npm run build
 
 EXPOSE 3000

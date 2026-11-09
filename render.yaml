@@ -31,6 +31,8 @@ services:
         sync: false
       - key: PAYPAL_WEBHOOK_ID
         sync: false
+      - key: NEXT_PUBLIC_AG_GRID_LICENSE # optional; build-time. Leave blank to run AG Grid Enterprise in trial mode (watermark)
+        sync: false
       - key: DEMO_CLIENT_PAYPAL_EMAIL
         sync: false
       - key: DEMO_FREELANCER_PAYPAL_EMAIL
