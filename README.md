@@ -146,6 +146,8 @@ lib/tick.ts              auto-approve, auth-expiry flags, payout status polling
 
 All prompts are in [`lib/agents/prompts.ts`](lib/agents/prompts.ts).
 
+**Free alternative: Google Gemini.** Set `GEMINI_API_KEY` instead of `ANTHROPIC_API_KEY`. A free key comes from [aistudio.google.com/apikey](https://aistudio.google.com/apikey) with just a Google account. The same agents, prompts, JSON-schema output, Zod validation and repair loop run on `gemini-flash-latest` (override with `GEMINI_MODEL`). The Verifier still gets screenshots, and the Assistant uses Gemini function calling over the same Agent Toolkit tools. If both keys are set, Claude is used unless `LLM_PROVIDER=gemini`.
+
 | Agent | Input | Decides | Does **not** decide |
 |---|---|---|---|
 | **Contract Agent** | Pasted chat thread | Title, milestones, amounts, due dates, 2–5 testable criteria and their check type, open ambiguities | Anything binding. Both humans edit and accept. |
@@ -172,7 +174,7 @@ Prompt-injection hygiene: threads, deliveries and statements are wrapped as data
    - URL: `https://<your-render-app>.onrender.com/api/webhooks/paypal`. For local testing, use a tunnel such as `ngrok http 3000`.
    - Events: `Payment authorization created`, `Payment authorization voided`, `Payment capture completed`, `Payment capture denied`, and all `Payment payouts-item *` events.
    - Copy the **Webhook ID** into `PAYPAL_WEBHOOK_ID`. It is required for signature verification.
-4. **Anthropic**: create an API key at [console.anthropic.com](https://console.anthropic.com) and set `ANTHROPIC_API_KEY`.
+4. **LLM**: either create an Anthropic key at [console.anthropic.com](https://console.anthropic.com) and set `ANTHROPIC_API_KEY`, or get a **free** Gemini key at [aistudio.google.com/apikey](https://aistudio.google.com/apikey) and set `GEMINI_API_KEY`.
 
 > **Note on invoices:** the Agent Toolkit runs with the platform app's credentials, so invoices are issued by the sandbox **business** account to the client's email. In production you'd use PayPal's partner/third-party flows to invoice on the freelancer's behalf.
 

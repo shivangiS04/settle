@@ -60,8 +60,14 @@ async function main() {
       headers: { "x-api-key": process.env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01" },
     });
     console.log(r.ok ? "✅ Anthropic API key works" : `❌ Anthropic API key rejected (${r.status})`);
-  } else {
-    console.log("⚠️  ANTHROPIC_API_KEY not set — agents will run in MOCK mode");
+  }
+  if (process.env.GEMINI_API_KEY) {
+    const model = process.env.GEMINI_MODEL || "gemini-flash-latest";
+    const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}`, { headers: { "x-goog-api-key": process.env.GEMINI_API_KEY } });
+    console.log(r.ok ? `✅ Gemini API key works (${model})` : `❌ Gemini key/model rejected (${r.status}): ${(await r.text()).slice(0, 200)}`);
+  }
+  if (!process.env.ANTHROPIC_API_KEY && !process.env.GEMINI_API_KEY) {
+    console.log("⚠️  No ANTHROPIC_API_KEY or GEMINI_API_KEY — agents will run in MOCK mode");
   }
 
   // 3. Webhook

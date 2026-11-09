@@ -34,6 +34,8 @@ services:
         sync: false
       - key: ANTHROPIC_API_KEY
         sync: false
+      - key: GEMINI_API_KEY # free alternative to Anthropic — set one of the two
+        sync: false
       - key: ANTHROPIC_MODEL
         value: claude-opus-5-5
       - key: PLATFORM_FEE_PCT

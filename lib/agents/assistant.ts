@@ -4,7 +4,8 @@ import { audit } from "../audit";
 import { anthropic, MODEL } from "./llm";
 import { ASSISTANT_SYSTEM } from "./prompts";
 import { toolkitToolsForClaude, TOOLKIT_TOOL_NAMES } from "./toolkit";
-import { llmMock } from "../mode";
+import { llmMock, llmProvider } from "../mode";
+import { geminiGenerate, geminiText, type GContent } from "./gemini";
 import { authHealth } from "../escrow";
 import { centsToValue } from "../utils";
 
@@ -77,6 +78,7 @@ export async function runAssistant(user: User, history: ChatTurn[]) {
   const ctx = `User: ${user.name} (${user.role.toLowerCase()}), PayPal email ${user.paypalEmail}. Today: ${new Date().toISOString().slice(0, 10)}. PayPal environment: sandbox.`;
 
   if (llmMock()) return mockAssistant(user, history);
+  if (llmProvider() === "gemini") return runAssistantGemini(user, history, ctx, proposed);
 
   const tools = [...CUSTOM_TOOLS, ...toolkitToolsForClaude()];
   const messages: Anthropic.Beta.BetaMessageParam[] = history.slice(-20).map((t) => ({ role: t.role, content: t.content }));
@@ -114,6 +116,38 @@ export async function runAssistant(user: User, history: ChatTurn[]) {
       }
     }
     messages.push({ role: "user", content: results });
+  }
+  return { reply: reply || "Done.", proposed };
+}
+
+/** Same loop on Gemini (free tier) using function calling. */
+async function runAssistantGemini(user: User, history: ChatTurn[], ctx: string, proposed: string[]) {
+  const tools = [...CUSTOM_TOOLS, ...toolkitToolsForClaude()].map((t) => ({
+    name: t.name,
+    description: t.description ?? "",
+    parameters: t.input_schema,
+  }));
+  const contents: GContent[] = history.slice(-20).map((t) => ({ role: t.role === "assistant" ? "model" : "user", parts: [{ text: t.content }] }));
+  let reply = "";
+  for (let i = 0; i < 6; i++) {
+    const res = await geminiGenerate({ system: ASSISTANT_SYSTEM(ctx), contents, tools });
+    const content = res.candidates?.[0]?.content;
+    if (!content) return { reply: "Sorry — I couldn't answer that.", proposed };
+    contents.push(content); // keep parts as-is (thought signatures must be replayed)
+    reply = geminiText(res).trim();
+    const calls = content.parts.filter((p) => p.functionCall);
+    if (!calls.length) break;
+    const responses = [];
+    for (const p of calls) {
+      const fc = p.functionCall!;
+      try {
+        const out = await handleTool(user, fc.name, fc.args ?? {}, proposed);
+        responses.push({ functionResponse: { name: fc.name, id: fc.id, response: { result: out } } });
+      } catch (e) {
+        responses.push({ functionResponse: { name: fc.name, id: fc.id, response: { error: (e as Error).message } } });
+      }
+    }
+    contents.push({ role: "user", parts: responses });
   }
   return { reply: reply || "Done.", proposed };
 }

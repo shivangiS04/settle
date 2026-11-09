@@ -1,8 +1,9 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
-import type * as z from "zod/v4";
+import * as z from "zod/v4";
 import { audit } from "../audit";
-import { llmMock } from "../mode";
+import { llmMock, llmProvider } from "../mode";
+import { geminiGenerate, geminiText, toGeminiParts, GEMINI_MODEL, type GContent } from "./gemini";
 import { REPAIR_PROMPT } from "./prompts";
 
 export const MODEL = process.env.ANTHROPIC_MODEL || "claude-opus-5-5";
@@ -53,30 +54,50 @@ export async function structuredCall<T>(args: StructuredArgs<T>): Promise<{ valu
     return { value, model: "mock", attempts: 1 };
   }
 
+  const provider = llmProvider();
   const messages: Anthropic.Beta.BetaMessageParam[] = [{ role: "user", content: args.content }];
-  const format = zodOutputFormat(args.schema);
+  const gContents: GContent[] = [{ role: "user", parts: toGeminiParts(args.content) }];
   let lastErr = "";
   for (let attempt = 1; attempt <= 3; attempt++) {
-    const res = await anthropic().beta.messages.create({
-      model: MODEL,
-      max_tokens: 16000,
-      system: args.system,
-      messages,
-      thinking: { type: "adaptive" },
-      output_config: { effort: args.effort ?? "medium", format },
-      // Server-side refusal fallback: if a safety classifier declines, the API reruns on a fallback model.
-      betas: ["server-side-fallback-2026-07-01"],
-      fallbacks: "default",
-    });
-
-    if (res.stop_reason === "refusal") {
-      lastErr = `Model declined (${res.stop_details?.category ?? "unknown"})`;
-      break;
+    let text = "";
+    let modelUsed = "";
+    let truncated = false;
+    let usage: unknown = null;
+    if (provider === "gemini") {
+      const res = await geminiGenerate({ system: args.system, contents: gContents, responseJsonSchema: z.toJSONSchema(args.schema) });
+      const cand = res.candidates?.[0];
+      if (!cand?.content || res.promptFeedback?.blockReason) {
+        lastErr = `Gemini returned no content (${res.promptFeedback?.blockReason ?? cand?.finishReason ?? "unknown"})`;
+        break;
+      }
+      text = geminiText(res);
+      modelUsed = res.modelVersion ?? GEMINI_MODEL;
+      truncated = cand.finishReason === "MAX_TOKENS";
+      usage = res.usageMetadata;
+    } else {
+      const res = await anthropic().beta.messages.create({
+        model: MODEL,
+        max_tokens: 16000,
+        system: args.system,
+        messages,
+        thinking: { type: "adaptive" },
+        output_config: { effort: args.effort ?? "medium", format: zodOutputFormat(args.schema) },
+        // Server-side refusal fallback: if a safety classifier declines, the API reruns on a fallback model.
+        betas: ["server-side-fallback-2026-07-01"],
+        fallbacks: "default",
+      });
+      if (res.stop_reason === "refusal") {
+        lastErr = `Model declined (${res.stop_details?.category ?? "unknown"})`;
+        break;
+      }
+      text = res.content
+        .filter((b): b is Anthropic.Beta.BetaTextBlock => b.type === "text")
+        .map((b) => b.text)
+        .join("");
+      modelUsed = res.model;
+      truncated = res.stop_reason === "max_tokens";
+      usage = res.usage;
     }
-    const text = res.content
-      .filter((b): b is Anthropic.Beta.BetaTextBlock => b.type === "text")
-      .map((b) => b.text)
-      .join("");
 
     const errors: string[] = [];
     let parsed: T | undefined;
@@ -86,7 +107,7 @@ export async function structuredCall<T>(args: StructuredArgs<T>): Promise<{ valu
       if (r.success) parsed = r.data;
       else errors.push(...r.error.issues.map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`));
     } catch (e) {
-      errors.push(`Invalid JSON: ${(e as Error).message}${res.stop_reason === "max_tokens" ? " (output was truncated)" : ""}`);
+      errors.push(`Invalid JSON: ${(e as Error).message}${truncated ? " (output was truncated)" : ""}`);
     }
     if (parsed !== undefined && args.validate) errors.push(...args.validate(parsed));
 
@@ -99,10 +120,10 @@ export async function structuredCall<T>(args: StructuredArgs<T>): Promise<{ valu
         action: `${args.agent}.decide`,
         summary: `${args.ctx.summary}${attempt > 1 ? ` (after ${attempt - 1} repair round${attempt > 2 ? "s" : ""})` : ""}`,
         durationMs: Date.now() - started,
-        request: { model: res.model, input: args.auditInput ?? (typeof args.content === "string" ? args.content : "[multimodal input]") },
-        response: { output: parsed, usage: res.usage },
+        request: { model: modelUsed, input: args.auditInput ?? (typeof args.content === "string" ? args.content : "[multimodal input]") },
+        response: { output: parsed, usage },
       });
-      return { value: parsed, model: res.model, attempts: attempt };
+      return { value: parsed, model: modelUsed, attempts: attempt };
     }
 
     lastErr = errors.join("; ");
@@ -118,6 +139,8 @@ export async function structuredCall<T>(args: StructuredArgs<T>): Promise<{ valu
     // Append-only repair turn: show the model its own output and the exact errors.
     messages.push({ role: "assistant", content: text || "(empty)" });
     messages.push({ role: "user", content: REPAIR_PROMPT(errors) });
+    gContents.push({ role: "model", parts: [{ text: text || "(empty)" }] });
+    gContents.push({ role: "user", parts: [{ text: REPAIR_PROMPT(errors) }] });
   }
   throw new Error(`${args.agent} agent failed to produce valid output: ${lastErr}`);
 }
