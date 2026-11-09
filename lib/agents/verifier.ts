@@ -67,7 +67,7 @@ export async function runVerification(milestoneId: string, deliveryId: string, a
     response: page ? { ...page, viewports: page.viewports.map((v) => ({ label: v.label, width: v.width, scrollWidth: v.scrollWidth, horizontalOverflow: v.horizontalOverflow })), text: page.text.slice(0, 2000) } : repo ? { ...repo, files: repo.files.map((f) => f.path) } : { words: textWords },
   });
 
-  // 2) Ask Claude to judge each criterion against the evidence.
+  // 2) Ask the LLM to judge each criterion against the evidence.
   const content = buildContent(m, crits, d, page, repo, textWords);
   const { value, model } = await structuredCall<Verdict>({
     agent: "verifier",
@@ -248,6 +248,6 @@ function mockVerdict(crits: Crit[], page: PageEvidence | null, repo: RepoEvidenc
       }
       return { id: c.id, passed, confidence: 0.5, evidence, screenshot: page ? (/375|mobile/.test(t) ? "mobile" : "desktop") : null };
     }),
-    summary: "[MOCK] Heuristic verification over real collected evidence. Set ANTHROPIC_API_KEY for Claude's judgment.",
+    summary: "[MOCK] Heuristic verification over real collected evidence. Set GEMINI_API_KEY (or ANTHROPIC_API_KEY) for real AI judgment.",
   };
 }

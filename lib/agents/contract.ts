@@ -61,7 +61,7 @@ export async function extractContract(thread: string, opts: { contractId?: strin
   });
 }
 
-/** Deterministic heuristic used only in MOCK mode (no Anthropic key) so the demo still flows. */
+/** Deterministic heuristic used only in MOCK mode (no LLM key) so the demo still flows. */
 function mockExtract(thread: string): Extraction {
   const amounts = Array.from(thread.matchAll(/\$\s?([\d,]+(?:\.\d{1,2})?)/g)).map((m) => Number(m[1].replace(/,/g, "")));
   const lower = thread.toLowerCase();
@@ -85,7 +85,7 @@ function mockExtract(thread: string): Extraction {
   });
   return {
     title: isSite ? "Landing page project" : isBlog ? "Content writing project" : "Freelance project",
-    summary: "[MOCK extraction — set ANTHROPIC_API_KEY for real AI output] " + thread.slice(0, 140).replace(/\s+/g, " "),
+    summary: "[MOCK extraction — set GEMINI_API_KEY or ANTHROPIC_API_KEY for real AI output] " + thread.slice(0, 140).replace(/\s+/g, " "),
     client_name: "",
     freelancer_name: "",
     currency: "USD",

@@ -1,7 +1,7 @@
 # Settle: 3-minute demo script
 
 **Before you start**
-- `npm run seed`, then open two tabs: **/** and **/dashboard**.
+- Click **Reset demo** in the header (or run `npm run seed -- --reset` locally), then open two tabs: **/** and the **Ops dashboard (/dashboard)**.
 - Have the sandbox **client** personal-account login ready for the PayPal popup.
 - Have a delivery URL ready. A small landing page with a contact form works well; `https://example.com` shows a failing verification.
 - Header switcher set to **View as Client**.
@@ -27,7 +27,7 @@
 
 ### 1:15 to 1:50: Deliver + AI verification (Verifier Agent)
 1. Switch to **Freelancer** → **Live URL** → paste the site → **Submit for AI verification**.
-2. The spinner shows headless Chromium loading the page at desktop and 375px. Claude then judges each criterion.
+2. The spinner shows headless Chromium loading the page at desktop and 375px. Gemini then judges each criterion from the screenshots and measured facts.
 3. Walk through the results: ✓/✗ per criterion with evidence, confidence, the desktop and mobile screenshots, and the score bar.
 4. Point at a code check: "word counts and mobile overflow width are *measured in code* and override the model".
 
@@ -40,8 +40,8 @@
 
 > "The AI proposes. Humans agree. Then, and only then, money moves."
 
-### 2:20 to 2:45: Ops dashboard + audit trail
-1. **Ops dashboard**: expand a contract → milestones → per-criterion verifier results.
+### 2:20 to 2:45: Ops dashboard (/dashboard) + audit trail
+1. Open the **Ops dashboard (/dashboard)** and expand a contract → milestones → per-criterion verifier results.
 2. Show the colored status pills, score bars and risk flags (`PAYOUT_FAILED`, `HONOR_PERIOD_PASSED`), **Group by status**, and the pinned **TOTAL** row (held / paid out / fees).
 3. Click a row to open the **Audit trail** side panel. It lists every agent decision and every PayPal call with its `PayPal-Request-Id`, resource id and debug id.
 
@@ -49,7 +49,7 @@
 
 ### 2:45 to 3:00: Assistant + Agent Toolkit
 1. **Assistant** → "Create an invoice for $150 of out-of-scope extra work".
-2. Claude drafts a `create_invoice` call through the **PayPal Agent Toolkit** and it appears as a **PENDING** card. Click **Confirm** to execute it, and the call is logged in the audit trail.
+2. The assistant (Gemini) drafts a `create_invoice` call through the **PayPal Agent Toolkit** and it appears as a **PENDING** card. Click **Confirm** to execute it, and the call is logged in the audit trail.
 
 > "Settle: chat to contract, PayPal escrow, AI verification, fair mediation, all explainable."
 

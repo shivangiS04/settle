@@ -1,5 +1,5 @@
 /**
- * Every prompt Settle sends to Claude lives here, so the AI's behaviour is reviewable in one file.
+ * Every prompt Settle sends to the LLM (Gemini or Claude) lives here, so the AI's behaviour is reviewable in one file.
  * Agents decide; they never move money. Money moves only after a human confirms a ProposedAction.
  */
 

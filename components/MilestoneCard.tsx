@@ -3,6 +3,7 @@ import { Card, CardContent, StatusPill } from "@/components/ui";
 import { FundButton } from "@/components/FundButton";
 import { ActionButton } from "@/components/ActionButton";
 import { authHealth } from "@/lib/escrow";
+import { llmLabel } from "@/lib/mode";
 import { AutoRefresh, DeliveryForm } from "@/components/DeliveryForm";
 import { VerificationPanel } from "@/components/VerificationPanel";
 import { centsToValue, feePct, money, splitFee } from "@/lib/utils";
@@ -103,7 +104,7 @@ export function MilestoneCard({
         {verifying && (
           <div className="flex items-center gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
             <span className="h-3 w-3 animate-spin rounded-full border-2 border-amber-600 border-t-transparent" />
-            Verifier Agent is checking the delivery (headless browser at desktop + 375px, then Claude judges each criterion)…
+            Verifier Agent is checking the delivery (headless browser at desktop + 375px, then {llmLabel()} judges each criterion)…
             <AutoRefresh />
           </div>
         )}

@@ -70,7 +70,7 @@ export async function runMediation(disputeId: string) {
       const pct = counters.length ? (base + counters.reduce((a, b) => a + b, 0) / counters.length) / 2 : base;
       return {
         freelancer_pct: Math.round(pct / 5) * 5,
-        reasoning: `[MOCK] Split anchored on the verifier score (${base}%)${counters.length ? " and moved toward the counter-offers" : ""}. Set ANTHROPIC_API_KEY for Claude's reasoning.`,
+        reasoning: `[MOCK] Split anchored on the verifier score (${base}%)${counters.length ? " and moved toward the counter-offers" : ""}. Set GEMINI_API_KEY (or ANTHROPIC_API_KEY) for real AI reasoning.`,
         per_criterion: m.criteria.map((c) => ({ criterion_id: c.id, note: v?.results.find((r) => r.criterionId === c.id)?.passed ? "met" : "not met" })),
       };
     },

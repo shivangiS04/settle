@@ -24,3 +24,11 @@ export function llmMock() {
 export function isMockMode() {
   return paypalMock() || llmMock();
 }
+
+/** Human-readable name of the active model, for UI copy (never hardcode a vendor in the UI). */
+export function llmLabel() {
+  const p = llmProvider();
+  if (p === "gemini") return `Gemini (${process.env.GEMINI_MODEL || "gemini-3.5-flash"})`;
+  if (p === "anthropic") return `Claude (${process.env.ANTHROPIC_MODEL || "claude-opus-5-5"})`;
+  return "mock heuristics";
+}
