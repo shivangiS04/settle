@@ -37,8 +37,8 @@ export function MilestoneCard({
   const latestDelivery = m.deliveries[0];
   const dispute = m.disputes[0];
   const pending = m.status === "SUBMITTED" && !!latestDelivery && !m.verifications.some((v) => v.deliveryId === latestDelivery.id);
-  // The verifier normally finishes in <60s; after 3 min assume it failed (see audit trail) and offer a retry.
-  const stalled = pending && Date.now() - latestDelivery.createdAt.getTime() > 180_000;
+  // Failed = the verifier recorded an error (timeout, AI busy, page unreachable), or it's silently stuck >3 min.
+  const stalled = pending && (!!latestDelivery.verifyError || Date.now() - latestDelivery.createdAt.getTime() > 180_000);
   const verifying = pending && !stalled;
 
   return (
@@ -110,7 +110,9 @@ export function MilestoneCard({
         )}
         {stalled && (
           <div className="flex items-center justify-between gap-2 rounded-md border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900">
-            Verification did not complete (see audit trail for the error).
+            <span>
+              <b>Verification didn&apos;t finish.</b> {latestDelivery?.verifyError ?? "It took too long — see the audit trail for details."}
+            </span>
             <ActionButton size="sm" variant="outline" path={`/api/milestones/${m.id}/verify`}>
               Retry verification
             </ActionButton>

@@ -59,7 +59,9 @@ export async function runVerification(milestoneId: string, deliveryId: string, a
     kind: "AGENT_DECISION",
     action: `verifier.collect.${d.type.toLowerCase()}`,
     summary: page
-      ? `Loaded ${page.finalUrl} (HTTP ${page.httpStatus}, ${page.loadMs}ms): ${page.wordCount} words, ${page.forms.length} form(s), mobile overflow=${page.viewports.find((v) => v.label === "mobile")?.horizontalOverflow}`
+      ? page.mode === "text-only"
+        ? `Loaded ${page.finalUrl} as TEXT-ONLY (HTTP ${page.httpStatus}, ${page.loadMs}ms; screenshots unavailable: ${page.fallbackReason}): ${page.wordCount} words, ${page.forms.length} form(s)`
+        : `Loaded ${page.finalUrl} (HTTP ${page.httpStatus}, ${page.loadMs}ms): ${page.wordCount} words, ${page.forms.length} form(s), mobile overflow=${page.viewports.find((v) => v.label === "mobile")?.horizontalOverflow}`
       : repo
         ? `Read ${repo.repo}: ${repo.facts.fileCount} files, README ${repo.facts.readmeWords} words, tests=${repo.facts.hasTests}`
         : `Text delivery: ${textWords} words (computed in code)`,
@@ -119,6 +121,7 @@ export async function runVerification(milestoneId: string, deliveryId: string, a
       scorePct: score,
       summary: value.summary,
       model,
+      mode: page?.mode ?? "browser",
       rawJson: JSON.stringify(value),
       screenshots: page ? { create: page.viewports.map((v) => ({ label: v.label, data: new Uint8Array(v.screenshot) })) } : undefined,
     },
@@ -186,7 +189,15 @@ function buildContent(
       blocks.push({ type: "text", text: `${v.label} screenshot (${v.width}px wide; measured page width ${v.scrollWidth}px; horizontal overflow: ${v.horizontalOverflow}):` });
       blocks.push({ type: "image", source: { type: "base64", media_type: "image/jpeg", data: v.screenshot.toString("base64") } });
     }
+    if (page.mode === "text-only") {
+      blocks.push({
+        type: "text",
+        text: "NOTE: Screenshots are unavailable on this server, so evidence comes from the page's raw HTML only. For VISUAL or mobile/375px criteria, judge from the HTML/CSS hints (meta viewport, @media breakpoints, layout markup) and LOWER your confidence accordingly. Never claim to have seen a screenshot.",
+      });
+    }
     const facts = {
+      evidence_mode: page.mode,
+      responsive_hints: page.responsiveHints ?? null,
       url: page.url,
       final_url: page.finalUrl,
       http_status: page.httpStatus,
@@ -232,9 +243,11 @@ function mockVerdict(crits: Crit[], page: PageEvidence | null, repo: RepoEvidenc
         passed = !!f;
         evidence = f ? `Form with ${f.fields.length} fields incl. email found.` : `No form with an email field found (${page.forms.length} forms).`;
       } else if (/375|mobile|responsive/.test(t) && page) {
-        const mv = page.viewports.find((v) => v.label === "mobile")!;
-        passed = !mv.horizontalOverflow && !!page.metaViewport;
-        evidence = `Mobile width ${mv.scrollWidth}px; meta viewport ${page.metaViewport ? "present" : "missing"}.`;
+        const mv = page.viewports.find((v) => v.label === "mobile");
+        passed = (mv ? !mv.horizontalOverflow : (page.responsiveHints?.mediaQueries ?? 0) > 0) && !!page.metaViewport;
+        evidence = mv
+          ? `Mobile width ${mv.scrollWidth}px; meta viewport ${page.metaViewport ? "present" : "missing"}.`
+          : `Text-only: ${page.responsiveHints?.mediaQueries ?? 0} @media rule(s); meta viewport ${page.metaViewport ? "present" : "missing"}.`;
       } else if (c.checkType === "WORD_COUNT") {
         evidence = `Words: ${page?.wordCount ?? textWords}.`;
       } else if (c.checkType === "CODE" && repo) {
@@ -246,8 +259,35 @@ function mockVerdict(crits: Crit[], page: PageEvidence | null, repo: RepoEvidenc
         passed = kw.length === 0 || hits.length / kw.length >= 0.4;
         evidence = `Keyword overlap ${hits.length}/${kw.length}.`;
       }
-      return { id: c.id, passed, confidence: 0.5, evidence, screenshot: page ? (/375|mobile/.test(t) ? "mobile" : "desktop") : null };
+      return { id: c.id, passed, confidence: 0.5, evidence, screenshot: page && page.viewports.length ? (/375|mobile/.test(t) ? "mobile" : "desktop") : null };
     }),
     summary: "[MOCK] Heuristic verification over real collected evidence. Set GEMINI_API_KEY (or ANTHROPIC_API_KEY) for real AI judgment.",
   };
+}
+
+const VERIFY_TIMEOUT_MS = Number(process.env.VERIFY_TIMEOUT_MS ?? 90_000);
+
+/**
+ * Runs a verification with a hard timeout. On timeout or failure, the error is recorded on the delivery
+ * (shown in the UI with a Retry button) and audited — the request never hangs silently.
+ */
+export async function verifyDelivery(milestoneId: string, deliveryId: string) {
+  await prisma.delivery.update({ where: { id: deliveryId }, data: { verifyError: null } });
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    return await Promise.race([
+      runVerification(milestoneId, deliveryId),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`Verification timed out after ${Math.round(VERIFY_TIMEOUT_MS / 1000)}s`)), VERIFY_TIMEOUT_MS);
+      }),
+    ]);
+  } catch (e) {
+    const msg = (e as { userMessage?: string }).userMessage ?? (e as Error).message;
+    await prisma.delivery.update({ where: { id: deliveryId }, data: { verifyError: msg.slice(0, 500) } }).catch(() => undefined);
+    const m = await prisma.milestone.findUnique({ where: { id: milestoneId } });
+    await audit({ contractId: m?.contractId, milestoneId, actor: "agent:verifier", kind: "ERROR", action: "verifier.failed", summary: `Verification failed: ${msg.slice(0, 300)}` });
+    throw e;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }

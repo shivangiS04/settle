@@ -38,6 +38,11 @@ export function VerificationPanel({ m }: { m: MilestoneFull }) {
           )}
         </div>
       )}
+      {v.mode === "text-only" && (
+        <div className="rounded border border-amber-200 bg-amber-50 px-2 py-1 text-xs text-amber-900">
+          Screenshots unavailable on this server; judged from page HTML. Visual and mobile checks have lower confidence.
+        </div>
+      )}
       <p className="text-sm text-slate-700">{v.summary}</p>
       <ul className="space-y-2">
         {m.criteria.map((c) => {

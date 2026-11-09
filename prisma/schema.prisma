@@ -109,6 +109,7 @@ model Delivery {
   type        String    // URL | GITHUB | TEXT
   content     String    // url or text body
   note        String    @default("")
+  verifyError String?   // set when verification failed/timed out; shown in the UI with a retry button
   verifications Verification[]
   createdAt   DateTime  @default(now())
 }
@@ -122,6 +123,7 @@ model Verification {
   scorePct    Float
   summary     String
   model       String
+  mode        String    @default("browser") // browser | text-only (no screenshots available on the server)
   rawJson     String    @default("{}")
   results     CriterionResult[]
   screenshots Screenshot[]

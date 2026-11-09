@@ -5,7 +5,7 @@ import { requireUser } from "@/lib/session";
 import { authorizeFunding, createFundingOrder, payoutMilestone, reauthorizeMilestone, settleMilestone } from "@/lib/escrow";
 import { transitionMilestone } from "@/lib/state";
 import { centsToValue, splitFee } from "@/lib/utils";
-import { runVerification } from "@/lib/agents/verifier";
+import { verifyDelivery } from "@/lib/agents/verifier";
 import { assertPublicUrl } from "@/lib/verifier/browse";
 import { parseRepo } from "@/lib/verifier/github";
 import { addFreelancerStatement, openDispute, requestMediation, respondToProposal } from "@/lib/dispute";
@@ -20,7 +20,7 @@ const running = new Set<string>();
 function startVerification(milestoneId: string, deliveryId: string) {
   if (running.has(deliveryId)) return;
   running.add(deliveryId);
-  runVerification(milestoneId, deliveryId)
+  verifyDelivery(milestoneId, deliveryId)
     .catch((e) => console.error("[verifier]", e))
     .finally(() => running.delete(deliveryId));
 }
