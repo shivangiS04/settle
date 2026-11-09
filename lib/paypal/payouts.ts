@@ -25,7 +25,8 @@ export async function sendPayout(
       {
         recipient_type: "EMAIL",
         receiver: args.receiverEmail,
-        amount: args.amount,
+        // Payouts API uses {value, currency}, unlike Orders/Payments' {value, currency_code}.
+        amount: { value: args.amount.value, currency: args.amount.currency_code },
         note: args.note.slice(0, 4000),
         sender_item_id: args.itemId,
       },
