@@ -6,6 +6,7 @@ import { createAuthorizeOrder, authorizeOrder } from "./paypal/orders";
 import { captureAuthorization, reauthorize, voidAuthorization } from "./paypal/payments";
 import { PayPalError } from "./paypal/client";
 import { sendPayout } from "./paypal/payouts";
+import { emitMockWebhook } from "./paypal/webhooks";
 
 const HONOR_DAYS = 3;
 const VALID_DAYS = 29;
@@ -60,6 +61,7 @@ export async function authorizeFunding(milestoneId: string, orderId: string, act
       authExpiresAt: auth.expiration_time ? new Date(auth.expiration_time) : new Date(created.getTime() + VALID_DAYS * 86400_000),
     },
   });
+  emitMockWebhook("PAYMENT.AUTHORIZATION.CREATED", { id: auth.id, status: "CREATED", custom_id: m.id, supplementary_data: { related_ids: { order_id: orderId } } });
   await transitionMilestone(m.id, "FUNDED", actor, `Authorization ${auth.id} holds ${centsToValue(m.amountCents)} ${m.currency}`);
   return load(milestoneId);
 }
@@ -118,6 +120,7 @@ export async function settleMilestone(milestoneId: string, freelancerCents: numb
     // Full refund to client: just void the hold.
     if (m.authStatus === "CREATED") {
       await voidAuthorization(m.authorizationId, { ...ctxBase, requestId: `settle-void-${m.authorizationId}` });
+      emitMockWebhook("PAYMENT.AUTHORIZATION.VOIDED", { id: m.authorizationId, status: "VOIDED", custom_id: m.id });
     }
     await prisma.milestone.update({
       where: { id: m.id },
@@ -138,6 +141,9 @@ export async function settleMilestone(milestoneId: string, freelancerCents: numb
       );
       captureId = cap.id;
       capturedCents = freelancerCents;
+      emitMockWebhook("PAYMENT.CAPTURE.COMPLETED", { id: cap.id, status: "COMPLETED", custom_id: m.id, supplementary_data: { related_ids: { authorization_id: m.authorizationId } } });
+      // final_capture=true on a partial capture → PayPal voids the remainder of the authorization.
+      if (!full) emitMockWebhook("PAYMENT.AUTHORIZATION.VOIDED", { id: m.authorizationId, status: "VOIDED", custom_id: m.id }, 2500);
     } catch (e) {
       if (e instanceof PayPalError && e.issue === "AUTHORIZATION_EXPIRED") {
         await prisma.milestone.update({ where: { id: m.id }, data: { authStatus: "EXPIRED", riskFlag: "AUTH_EXPIRED" } });
@@ -193,6 +199,19 @@ export async function payoutMilestone(milestoneId: string, actor: string) {
         riskFlag: null,
       },
     });
+    // Sandbox tip: a receiver email containing "fail" simulates a failed payout in MOCK mode.
+    const fail = /fail/i.test(m.contract.freelancer.paypalEmail);
+    emitMockWebhook(
+      fail ? "PAYMENT.PAYOUTS-ITEM.FAILED" : "PAYMENT.PAYOUTS-ITEM.SUCCEEDED",
+      {
+        payout_item_id: res.itemId ?? undefined,
+        payout_batch_id: res.batchId,
+        transaction_status: fail ? "FAILED" : "SUCCESS",
+        payout_item: { sender_item_id: m.id },
+        ...(fail ? { errors: { name: "RECEIVER_UNREGISTERED", message: "Receiver is unregistered (simulated)" } } : {}),
+      },
+      3000,
+    );
   } catch (e) {
     await prisma.milestone.update({
       where: { id: m.id },
