@@ -5,11 +5,24 @@ import { requireUser } from "@/lib/session";
 import { authorizeFunding, createFundingOrder, payoutMilestone, reauthorizeMilestone, settleMilestone } from "@/lib/escrow";
 import { transitionMilestone } from "@/lib/state";
 import { centsToValue, splitFee } from "@/lib/utils";
+import { runVerification } from "@/lib/agents/verifier";
+import { assertPublicUrl } from "@/lib/verifier/browse";
+import { parseRepo } from "@/lib/verifier/github";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
 
 type Ctx = { params: { id: string; action: string } };
+
+/** Long-lived Node server (Render) → fire-and-forget is fine; the UI polls for the result. */
+const running = new Set<string>();
+function startVerification(milestoneId: string, deliveryId: string) {
+  if (running.has(deliveryId)) return;
+  running.add(deliveryId);
+  runVerification(milestoneId, deliveryId)
+    .catch((e) => console.error("[verifier]", e))
+    .finally(() => running.delete(deliveryId));
+}
 
 export async function POST(req: Request, { params }: Ctx) {
   const { id, action } = params;
@@ -77,6 +90,38 @@ export async function POST(req: Request, { params }: Ctx) {
           where: { id: pa.id },
           data: { status: "EXECUTED", executedAt: new Date(), resultJson: JSON.stringify({ captureId: settled.captureId, payoutBatchId: settled.payoutBatchId }) },
         });
+        return NextResponse.json({ ok: true });
+      }
+      case "submit": {
+        needFreelancer();
+        if (!["FUNDED", "VERIFIED", "SUBMITTED"].includes(m.status)) throw new Error(`Cannot submit while ${m.status}`);
+        const type = String(body.type ?? "").toUpperCase();
+        const content = String(body.content ?? "").trim();
+        if (!["URL", "GITHUB", "TEXT"].includes(type)) throw new Error("type must be URL, GITHUB or TEXT");
+        if (!content) throw new Error("Delivery content is required");
+        if (type === "URL") await assertPublicUrl(content);
+        if (type === "GITHUB") parseRepo(content);
+        if (content.length > 100_000) throw new Error("Delivery too large");
+        const d = await prisma.delivery.create({ data: { milestoneId: id, type, content, note: String(body.note ?? "").slice(0, 2000) } });
+        await audit({
+          contractId: m.contractId,
+          milestoneId: id,
+          actor,
+          kind: "HUMAN_ACTION",
+          action: "delivery.submit",
+          summary: `Freelancer submitted a ${type} delivery${type !== "TEXT" ? `: ${content}` : ` (${content.length} chars)`}`,
+        });
+        await transitionMilestone(id, "SUBMITTED", actor, `${type} delivery submitted`);
+        startVerification(id, d.id);
+        return NextResponse.json({ ok: true, deliveryId: d.id });
+      }
+      case "verify": {
+        // Re-run the verifier on the latest delivery (either party may ask).
+        if (!isClient && !isFreelancer) throw new Error("Not a party to this contract");
+        const d = await prisma.delivery.findFirst({ where: { milestoneId: id }, orderBy: { createdAt: "desc" } });
+        if (!d) throw new Error("No delivery to verify");
+        if (!["SUBMITTED", "VERIFIED"].includes(m.status)) throw new Error(`Cannot verify while ${m.status}`);
+        startVerification(id, d.id);
         return NextResponse.json({ ok: true });
       }
       case "retry-payout": {

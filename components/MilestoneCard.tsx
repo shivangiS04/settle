@@ -3,6 +3,8 @@ import { Card, CardContent, StatusPill } from "@/components/ui";
 import { FundButton } from "@/components/FundButton";
 import { ActionButton } from "@/components/ActionButton";
 import { authHealth } from "@/lib/escrow";
+import { AutoRefresh, DeliveryForm } from "@/components/DeliveryForm";
+import { VerificationPanel } from "@/components/VerificationPanel";
 import { centsToValue, money, splitFee } from "@/lib/utils";
 
 export type MilestoneFull = Prisma.MilestoneGetPayload<{
@@ -30,6 +32,11 @@ export function MilestoneCard({
 }) {
   const health = authHealth(m);
   const { feeCents, netCents } = splitFee(m.amountCents);
+  const latestDelivery = m.deliveries[0];
+  const pending = m.status === "SUBMITTED" && !!latestDelivery && !m.verifications.some((v) => v.deliveryId === latestDelivery.id);
+  // The verifier normally finishes in <60s; after 3 min assume it failed (see audit trail) and offer a retry.
+  const stalled = pending && Date.now() - latestDelivery.createdAt.getTime() > 180_000;
+  const verifying = pending && !stalled;
 
   return (
     <Card>
@@ -84,6 +91,34 @@ export function MilestoneCard({
           ) : (
             <p className="text-sm text-slate-500">Waiting for the client to fund escrow.</p>
           )
+        )}
+
+        {/* Delivery (freelancer) */}
+        {viewer.isFreelancer && m.status === "FUNDED" && <DeliveryForm milestoneId={m.id} />}
+        {m.status === "FUNDED" && !viewer.isFreelancer && <p className="text-sm text-slate-500">Funds held in escrow. Waiting for the freelancer&apos;s delivery.</p>}
+
+        {/* Verification */}
+        {verifying && (
+          <div className="flex items-center gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+            <span className="h-3 w-3 animate-spin rounded-full border-2 border-amber-600 border-t-transparent" />
+            Verifier Agent is checking the delivery (headless browser at desktop + 375px, then Claude judges each criterion)…
+            <AutoRefresh />
+          </div>
+        )}
+        {stalled && (
+          <div className="flex items-center justify-between gap-2 rounded-md border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900">
+            Verification did not complete (see audit trail for the error).
+            <ActionButton size="sm" variant="outline" path={`/api/milestones/${m.id}/verify`}>
+              Retry verification
+            </ActionButton>
+          </div>
+        )}
+        <VerificationPanel m={m} />
+        {viewer.isFreelancer && m.status === "VERIFIED" && <DeliveryForm milestoneId={m.id} resubmit />}
+        {m.status === "VERIFIED" && m.autoApproveAt && (
+          <p className="text-xs text-emerald-700">
+            All criteria passed — funds auto-release {m.autoApproveAt.toLocaleString()} unless the client approves or disputes first.
+          </p>
         )}
 
         {/* Approve (client) */}
