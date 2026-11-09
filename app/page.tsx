@@ -2,7 +2,7 @@ import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { currentUser } from "@/lib/session";
 import { Button, Card, CardContent, StatusPill } from "@/components/ui";
-import { money } from "@/lib/utils";
+import { money, safeJson } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
@@ -20,8 +20,23 @@ export default async function Home() {
     include: { milestones: { orderBy: { idx: "asc" } }, client: true, freelancer: true },
     orderBy: { updatedAt: "desc" },
   });
+  const reminders = await prisma.proposedAction.findMany({
+    where: { type: "SEND_REMINDER", status: "EXECUTED", paramsJson: { contains: `"toUserId":"${user.id}"` } },
+    orderBy: { executedAt: "desc" },
+    take: 3,
+  });
   return (
     <div className="space-y-6">
+      {reminders.map((r) => (
+        <div key={r.id} className="rounded-md border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">
+          🔔 Reminder: {safeJson<{ message?: string }>(r.paramsJson, {}).message}
+          {r.contractId && (
+            <Link href={`/contracts/${r.contractId}`} className="ml-2 underline">
+              open
+            </Link>
+          )}
+        </div>
+      ))}
       <div className="flex items-end justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">My contracts</h1>
