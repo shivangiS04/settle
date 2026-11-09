@@ -253,6 +253,10 @@ The repo includes a [`render.yaml`](render.yaml) Blueprint: a Docker web service
 
 **Reset demo:** with `DEMO_RESET_ENABLED=1` (set in `render.yaml`), the header shows a **Reset demo** button. It calls `POST /api/demo/reset`, which wipes and reseeds the *app database only* (it never calls PayPal). It's rate-limited to once per 60 seconds and recorded in the audit trail.
 
+**AG Grid license:** the dashboard uses AG Grid Enterprise features (master/detail, set filters, row grouping). Without a key it runs in trial mode with a watermark. To remove it, set `NEXT_PUBLIC_AG_GRID_LICENSE`. It's baked in at **build time** (the Dockerfile declares it as `ARG`/`ENV` before `npm run build`, and Render passes env vars as build args), so redeploy after changing it.
+
+**Uptime during judging:** the free web service sleeps after 15 minutes idle. During judging, an uptime pinger hits `/api/health` every 10 minutes to avoid cold starts. `/api/health` is deliberately cheap: one `SELECT 1`.
+
 How the build works: `scripts/use-postgres.mjs` switches the Prisma provider from `sqlite` to `postgresql` at build time. The schema avoids enums and JSON columns so it runs unchanged on both. Background jobs (auto-approve, auth expiry, payout sync) run every 60s inside the server via `instrumentation.ts`. You can also call `POST /api/cron/tick` with `Authorization: Bearer $CRON_SECRET`.
 
 The Blueprint uses Render's **free** plans. A free web service sleeps after 15 minutes idle, so the first request takes about a minute, and free Postgres expires after 30 days. If Verifier screenshots run out of memory, switch the web service to `standard`.
