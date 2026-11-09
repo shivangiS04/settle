@@ -1,0 +1,130 @@
+import type { Prisma } from "@prisma/client";
+import { Card, CardContent, StatusPill } from "@/components/ui";
+import { FundButton } from "@/components/FundButton";
+import { ActionButton } from "@/components/ActionButton";
+import { authHealth } from "@/lib/escrow";
+import { centsToValue, money, splitFee } from "@/lib/utils";
+
+export type MilestoneFull = Prisma.MilestoneGetPayload<{
+  include: {
+    criteria: true;
+    deliveries: true;
+    verifications: { include: { results: true; screenshots: { select: { id: true; label: true } } } };
+    disputes: { include: { proposals: true } };
+  };
+}>;
+export type Viewer = { role: string; userId: string; isClient: boolean; isFreelancer: boolean };
+
+export function MilestoneCard({
+  m,
+  contract,
+  viewer,
+  paypalClientId,
+  mock,
+}: {
+  m: MilestoneFull;
+  contract: { id: string; status: string; currency: string };
+  viewer: Viewer;
+  paypalClientId: string;
+  mock: boolean;
+}) {
+  const health = authHealth(m);
+  const { feeCents, netCents } = splitFee(m.amountCents);
+
+  return (
+    <Card>
+      <CardContent className="space-y-4 pt-5">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <div className="text-xs font-medium uppercase tracking-wide text-slate-400">Milestone {m.idx + 1}</div>
+            <div className="text-lg font-semibold">{m.title}</div>
+            {m.description && <p className="text-sm text-slate-600">{m.description}</p>}
+            <div className="mt-1 text-xs text-slate-500">
+              {money(m.amountCents, m.currency)}
+              {m.dueDate && <> · due {m.dueDate.toDateString()}</>}
+              {m.authorizationId && <> · auth <code>{m.authorizationId}</code> ({m.authStatus})</>}
+            </div>
+          </div>
+          <StatusPill status={m.status} />
+        </div>
+
+        <div>
+          <div className="mb-1 text-xs font-semibold text-slate-500">Acceptance criteria</div>
+          <ul className="space-y-1 text-sm">
+            {m.criteria.map((c) => (
+              <li key={c.id} className="flex gap-2">
+                <span className="text-slate-400">•</span>
+                <span>{c.text}</span>
+                <span className="ml-auto shrink-0 text-[10px] uppercase text-slate-400">{c.checkType}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        {health.level !== "ok" && (
+          <div className="flex items-center justify-between gap-3 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+            <span>⚠ {health.message}</span>
+            {viewer.isClient && health.level === "honor" && (
+              <ActionButton size="sm" variant="outline" path={`/api/milestones/${m.id}/reauthorize`}>
+                Reauthorize
+              </ActionButton>
+            )}
+          </div>
+        )}
+
+        {/* Funding */}
+        {m.status === "AGREED" && contract.status !== "DRAFT" && (
+          viewer.isClient ? (
+            <div className="rounded-md bg-slate-50 p-3">
+              <p className="mb-2 text-sm text-slate-600">
+                Fund this milestone. PayPal <b>authorizes</b> {money(m.amountCents, m.currency)} — it is held, not charged, until you approve the work.
+              </p>
+              <FundButton milestoneId={m.id} currency={m.currency} clientId={paypalClientId} mock={mock} />
+            </div>
+          ) : (
+            <p className="text-sm text-slate-500">Waiting for the client to fund escrow.</p>
+          )
+        )}
+
+        {/* Approve (client) */}
+        {viewer.isClient && ["SUBMITTED", "VERIFIED"].includes(m.status) && (
+          <div className="flex flex-wrap items-center gap-2 border-t pt-3">
+            <ActionButton
+              variant="success"
+              path={`/api/milestones/${m.id}/approve`}
+              busyText="Capturing & paying out…"
+              confirmText={`Approve and release funds?\n\nCapture: ${centsToValue(m.amountCents)} ${m.currency}\nPlatform fee (3%): ${centsToValue(feeCents)}\nPayout to freelancer: ${centsToValue(netCents)} ${m.currency}`}
+            >
+              Approve & release {money(m.amountCents, m.currency)}
+            </ActionButton>
+          </div>
+        )}
+
+        {m.status === "SETTLED" && (
+          <div className="grid grid-cols-2 gap-2 rounded-md bg-emerald-50 p-3 text-sm sm:grid-cols-4">
+            <Stat label="Captured" v={money(m.capturedCents, m.currency)} />
+            <Stat label="Returned to client" v={money(m.releasedCents, m.currency)} />
+            <Stat label="Platform fee" v={money(m.feeCents, m.currency)} />
+            <Stat label={`Payout (${m.payoutStatus ?? "—"})`} v={money(m.payoutCents, m.currency)} />
+            {m.payoutStatus === "FAILED" && (
+              <div className="col-span-full">
+                <ActionButton size="sm" variant="destructive" path={`/api/milestones/${m.id}/retry-payout`}>
+                  Retry payout
+                </ActionButton>
+              </div>
+            )}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function Stat({ label, v }: { label: string; v: string }) {
+  return (
+    <div>
+      <div className="text-[11px] text-slate-500">{label}</div>
+      <div className="font-semibold tabular-nums">{v}</div>
+    </div>
+  );
+}

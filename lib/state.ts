@@ -18,7 +18,7 @@ const TRANSITIONS: Record<MilestoneState, MilestoneState[]> = {
   DRAFT: ["AGREED"],
   AGREED: ["FUNDED"],
   FUNDED: ["SUBMITTED", "SETTLED"], // SETTLED here = voided/refunded before delivery
-  SUBMITTED: ["VERIFIED", "SUBMITTED"],
+  SUBMITTED: ["VERIFIED", "SUBMITTED", "APPROVED", "DISPUTED"], // client may decide before the verifier finishes
   VERIFIED: ["APPROVED", "DISPUTED", "SUBMITTED"], // resubmission allowed
   APPROVED: ["SETTLED"],
   DISPUTED: ["MEDIATED", "DISPUTED"],
