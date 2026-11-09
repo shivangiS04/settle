@@ -210,7 +210,7 @@ The repo includes a [`render.yaml`](render.yaml) Blueprint: a Docker web service
 
 How the build works: `scripts/use-postgres.mjs` switches the Prisma provider from `sqlite` to `postgresql` at build time. The schema avoids enums and JSON columns so it runs unchanged on both. Background jobs (auto-approve, auth expiry, payout sync) run every 60s inside the server via `instrumentation.ts`. You can also call `POST /api/cron/tick` with `Authorization: Bearer $CRON_SECRET`.
 
-The web service uses the `standard` plan because headless Chromium needs about 1 GB of RAM.
+The Blueprint uses Render's **free** plans. A free web service sleeps after 15 minutes idle, so the first request takes about a minute, and free Postgres expires after 30 days. If Verifier screenshots run out of memory, switch the web service to `standard`.
 
 ---
 

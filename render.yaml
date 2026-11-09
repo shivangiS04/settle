@@ -1,7 +1,7 @@
 # Render Blueprint — New → Blueprint → select this repo.
 databases:
   - name: settle-db
-    plan: basic-256mb
+    plan: free # free Postgres (expires after 30 days — fine for a hackathon)
     databaseName: settle
     user: settle
 
@@ -9,7 +9,7 @@ services:
   - type: web
     name: settle
     runtime: docker
-    plan: standard # Playwright/Chromium needs ~1GB RAM for screenshots
+    plan: free # 512MB; upgrade to 'standard' if Chromium screenshots run out of memory
     dockerfilePath: ./Dockerfile
     healthCheckPath: /api/health
     autoDeploy: true
@@ -38,6 +38,8 @@ services:
         sync: false
       - key: ANTHROPIC_MODEL
         value: claude-opus-5-5
+      - key: GEMINI_MODEL
+        value: gemini-3.5-flash
       - key: PLATFORM_FEE_PCT
         value: "3"
       - key: AUTO_APPROVE_HOURS
