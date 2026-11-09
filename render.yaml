@@ -1,7 +1,9 @@
 # Render Blueprint — New → Blueprint → select this repo.
+# Uses Render's free plans (free web service sleeps when idle; free Postgres expires after 30 days).
 databases:
   - name: settle-db
-    plan: free # free Postgres (expires after 30 days — fine for a hackathon)
+    plan: free
+    region: oregon
     databaseName: settle
     user: settle
 
@@ -9,10 +11,9 @@ services:
   - type: web
     name: settle
     runtime: docker
-    plan: free # 512MB; upgrade to 'standard' if Chromium screenshots run out of memory
+    plan: free
+    region: oregon
     dockerfilePath: ./Dockerfile
-    healthCheckPath: /api/health
-    autoDeploy: true
     envVars:
       - key: DATABASE_URL
         fromDatabase:
@@ -32,12 +33,8 @@ services:
         sync: false
       - key: DEMO_FREELANCER_PAYPAL_EMAIL
         sync: false
-      - key: ANTHROPIC_API_KEY
+      - key: GEMINI_API_KEY
         sync: false
-      - key: GEMINI_API_KEY # free alternative to Anthropic — set one of the two
-        sync: false
-      - key: ANTHROPIC_MODEL
-        value: claude-opus-5-5
       - key: GEMINI_MODEL
         value: gemini-3.5-flash
       - key: PLATFORM_FEE_PCT
@@ -46,5 +43,3 @@ services:
         value: "48"
       - key: SEED_ON_START
         value: "1" # set to 0 after the first deploy to keep your data
-      - key: CRON_SECRET
-        generateValue: true
