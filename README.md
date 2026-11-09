@@ -1,6 +1,8 @@
 # Settle: AI escrow for freelance work, on PayPal
 
 > Built for the PayPal **"Build What's Next with PayPal and AI"** hackathon. Runs fully on the **PayPal Sandbox**.
+>
+> **Live demo:** https://settle-wuro.onrender.com (free tier: the first load after idle can take about a minute)
 
 ## The problem
 
