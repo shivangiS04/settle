@@ -24,9 +24,9 @@ Sandbox buyer password: <FILL_ME>
 
 If the data looks used, click **↺ Reset demo** in the header. It resets the app data only and never touches PayPal.
 
-![TODO: contract extracted from a chat thread](docs/screenshots/contract-from-chat.png)
-![TODO: verifier results with desktop + 375px screenshots](docs/screenshots/verifier-results.png)
-![TODO: ops dashboard with audit trail panel](docs/screenshots/ops-dashboard.png)
+![Contract Agent: a WhatsApp thread turned into milestones, amounts and testable criteria, with an ambiguity flagged](docs/screenshots/contract-from-chat.png)
+![Verifier Agent: 4/4 criteria passed with evidence, plus the desktop and 375px screenshots it judged from](docs/screenshots/verifier-results.png)
+![Ops dashboard: contracts → milestones in AG Grid, with the audit-trail side panel open](docs/screenshots/ops-dashboard.png)
 
 ## The problem
 
